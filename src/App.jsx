@@ -1,0 +1,365 @@
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff } from 'lucide-react';
+
+const ListView = ({ terms, search, onSearch, onSelect, onAdd }) => (
+  <div className="flex flex-col h-screen w-full">
+    {/* Fixed header */}
+    <div className="flex-none p-4 border-b border-gray-200 bg-white">
+      <div className="relative max-w-full">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-600" />
+        <Input 
+          placeholder="Search terms..." 
+          value={search}
+          onChange={onSearch}
+          className="w-full pl-10 h-12 text-base bg-white border-gray-300 text-gray-900 placeholder-gray-600"
+          onKeyDown={(e) => e.key === 'Enter' && search && !terms.length && onAdd(search)}
+        />
+      </div>
+    </div>
+
+    {/* Scrollable content */}
+    <ScrollArea className="flex-1">
+      <div className="divide-y divide-gray-200">
+        {terms.map(term => (
+          <div 
+            key={term.id}
+            className="p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
+            onClick={() => onSelect(term)}
+          >
+            <div className="font-medium text-base mb-1 text-gray-900 break-words">
+              {term.term || "Untitled"}
+            </div>
+            <div className="text-sm text-gray-700 line-clamp-2 break-words">
+              {term.definition || "Tap to add definition"}
+            </div>
+          </div>
+        ))}
+        {terms.length === 0 && (
+          <div className="p-8 text-center text-gray-600">
+            {search ? 'No matches - press Enter to create' : 'No terms yet'}
+          </div>
+        )}
+      </div>
+    </ScrollArea>
+
+    {/* Fixed add button */}
+    <div className="flex-none p-4">
+      <Button 
+        className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium" 
+        onClick={() => onAdd()}
+      >
+        <Plus className="h-4 w-4 mr-2" />
+        Add Term
+      </Button>
+    </div>
+  </div>
+);
+
+const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, isListening, setIsListening, feedback, setFeedback, isGeneratingAudio, setIsGeneratingAudio }) => {
+  const [recognition, setRecognition] = useState(null);
+
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognitionInstance = new SpeechRecognition();
+      recognitionInstance.continuous = false;
+      recognitionInstance.interimResults = false;
+      recognitionInstance.lang = 'en-AU';
+      
+      recognitionInstance.onresult = (event) => {
+        const spoken = event.results[0][0].transcript.toLowerCase().trim();
+        const target = term?.term?.toLowerCase().trim();
+        
+        if (spoken === target) {
+          setFeedback('Perfect! 🎉');
+        } else if (spoken.includes(target) || target.includes(spoken)) {
+          setFeedback('Close! Try again.');
+        } else {
+          setFeedback(`You said "${spoken}" - try saying "${term?.term}"`);
+        }
+        setIsListening(false);
+      };
+      
+      recognitionInstance.onerror = () => {
+        setFeedback('Speech recognition error. Try again.');
+        setIsListening(false);
+      };
+      
+      setRecognition(recognitionInstance);
+    }
+  }, [term?.term, setFeedback, setIsListening]);
+
+  const startListening = () => {
+    if (recognition) {
+      setFeedback('');
+      setIsListening(true);
+      recognition.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognition) {
+      recognition.stop();
+      setIsListening(false);
+    }
+  };
+
+  const speakWithElevenLabs = async () => {
+    if (!elevenLabsKey || !term?.term) return;
+    
+    setIsGeneratingAudio(true);
+    try {
+      const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': elevenLabsKey
+        },
+        body: JSON.stringify({
+          text: term.term,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.5
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const audio = new Audio();
+        audio.src = URL.createObjectURL(await response.blob());
+        audio.play();
+      }
+    } catch (error) {
+      console.error('ElevenLabs error:', error);
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
+
+  const speakTermFallback = () => {
+    if ('speechSynthesis' in window && term?.term) {
+      const utterance = new SpeechSynthesisUtterance(term.term);
+      utterance.lang = 'en-AU';
+      speechSynthesis.speak(utterance);
+    }
+  };
+
+  const saveElevenLabsKey = (key) => {
+    setElevenLabsKey(key);
+    localStorage.setItem('elevenLabsKey', key);
+  };
+
+  return (
+    <div className="flex flex-col h-screen w-full">
+      {/* Fixed header */}
+      <div className="flex-none p-4 border-b border-gray-200 bg-white flex justify-between items-center">
+        <Button 
+          variant="ghost" 
+          className="h-12 px-4 text-base text-gray-900 hover:bg-gray-100" 
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="text-red-700 border-red-300 hover:bg-red-50 hover:border-red-400"
+          onClick={() => {
+            if (confirm('Delete this term?')) {
+              onBack();
+            }
+          }}
+        >
+          Delete
+        </Button>
+      </div>
+
+      {/* Scrollable content */}
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          <div className="space-y-2">
+            <Input 
+              placeholder="Term name..."
+              value={term?.term || ''}
+              onChange={(e) => onChange('term', e.target.value)}
+              className="w-full h-12 text-lg font-medium bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
+            />
+            
+            {/* API Key Input */}
+            {!elevenLabsKey && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div className="text-sm font-medium text-yellow-800 mb-2">Add ElevenLabs API Key for Natural Australian Voice</div>
+                <div className="flex gap-2">
+                  <Input 
+                    placeholder="sk-..."
+                    type="password"
+                    onChange={(e) => saveElevenLabsKey(e.target.value)}
+                    className="flex-1 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open('https://elevenlabs.io/app/settings/api-keys', '_blank')}
+                    className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+                  >
+                    Get Key
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Pronunciation Practice Section */}
+            {term?.term && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-blue-800">Practice Pronunciation</span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={elevenLabsKey ? speakWithElevenLabs : speakTermFallback}
+                      disabled={isGeneratingAudio}
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                    >
+                      <Volume2 className="h-3 w-3 mr-1" />
+                      {isGeneratingAudio ? 'Loading...' : elevenLabsKey ? 'Listen (AusE)' : 'Listen'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={isListening ? "destructive" : "default"}
+                      onClick={isListening ? stopListening : startListening}
+                      className={isListening ? "" : "bg-blue-600 hover:bg-blue-700"}
+                    >
+                      {isListening ? <MicOff className="h-3 w-3 mr-1" /> : <Mic className="h-3 w-3 mr-1" />}
+                      {isListening ? 'Stop' : 'Practice'}
+                    </Button>
+                  </div>
+                </div>
+                {feedback && (
+                  <div className={`text-sm p-2 rounded ${feedback.includes('Perfect') ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    {feedback}
+                  </div>
+                )}
+                {isListening && (
+                  <div className="text-sm text-blue-600 italic">
+                    🎤 Listening... Say "{term.term}"
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Input 
+            placeholder="IPA pronunciation (e.g., /ˌeɪ piː ˈaɪ/)..."
+            value={term?.ipa || ''}
+            onChange={(e) => onChange('ipa', e.target.value)}
+            className="w-full h-12 text-base font-mono bg-white border-gray-300 text-blue-600 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
+          />
+          <Input 
+            placeholder="Mandarin translation..."
+            value={term?.mandarin || ''}
+            onChange={(e) => onChange('mandarin', e.target.value)}
+            className="w-full h-12 text-base bg-white border-gray-300 text-green-700 placeholder-gray-500 focus:border-green-500 focus:ring-green-500"
+          />
+          <Textarea 
+            placeholder="Add definition..."
+            value={term?.definition || ''}
+            onChange={(e) => onChange('definition', e.target.value)}
+            className="w-full min-h-40 text-base resize-none bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
+            rows={10}
+          />
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};
+
+export default function GlossaryApp() {
+  const [terms, setTerms] = useState([]);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [view, setView] = useState('list');
+  const [isListening, setIsListening] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [elevenLabsKey, setElevenLabsKey] = useState(localStorage.getItem('elevenLabsKey') || '');
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem('glossary') || '[]');
+    const defaultTerms = saved.length ? saved : [
+      { id: 1, term: "Algorithm", definition: "Step-by-step procedure for solving problems" },
+      { id: 2, term: "API", definition: "Application Programming Interface" },
+      { id: 3, term: "Database", definition: "Structured collection of data" }
+    ];
+    setTerms(defaultTerms);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('glossary', JSON.stringify(terms));
+  }, [terms]);
+
+  const filtered = terms.filter(t => 
+    t.term.toLowerCase().includes(search.toLowerCase()) || 
+    t.definition.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleAdd = (searchTerm = '') => {
+    const term = { id: crypto.randomUUID(), term: searchTerm, definition: "" };
+    setTerms([term, ...terms]);
+    setSelected(term);
+    setView('detail');
+    if (searchTerm) setSearch('');
+  };
+
+  const handleSave = (field, value) => {
+    if (!selected) return;
+    const updated = terms.map(t => t.id === selected.id ? {...t, [field]: value} : t);
+    setTerms(updated);
+    setSelected({...selected, [field]: value});
+  };
+
+  const handleBack = () => {
+    setView('list');
+    setSelected(null);
+  };
+
+  const handleSelect = (term) => {
+    setSelected(term);
+    setView('detail');
+  };
+
+  return (
+    <div className="w-full max-w-md mx-auto min-h-screen bg-white">
+      {view === 'list' ? (
+        <ListView 
+          terms={filtered}
+          search={search}
+          onSearch={(e) => setSearch(e.target.value)}
+          onSelect={handleSelect}
+          onAdd={handleAdd}
+        />
+      ) : (
+        <DetailView 
+          term={selected}
+          onBack={handleBack}
+          onChange={handleSave}
+          elevenLabsKey={elevenLabsKey}
+          setElevenLabsKey={setElevenLabsKey}
+          isListening={isListening}
+          setIsListening={setIsListening}
+          feedback={feedback}
+          setFeedback={setFeedback}
+          isGeneratingAudio={isGeneratingAudio}
+          setIsGeneratingAudio={setIsGeneratingAudio}
+        />
+      )}
+    </div>
+  );
+}
