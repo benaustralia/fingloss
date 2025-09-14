@@ -3,12 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff, Tag, X } from 'lucide-react';
+import { glossaryService } from '@/lib/glossaryService';
 
-const ListView = ({ terms, search, onSearch, onSelect, onAdd }) => (
+const ListView = ({ terms, search, onSearch, onSelect, onAdd, tags, selectedTag, onTagSelect }) => (
   <div className="flex flex-col h-screen w-full">
     {/* Fixed header */}
-    <div className="flex-none p-4 border-b border-gray-200 bg-white">
+    <div className="flex-none p-4 border-b border-gray-200 bg-white space-y-3">
       <div className="relative max-w-full">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-600" />
         <Input 
@@ -19,6 +20,32 @@ const ListView = ({ terms, search, onSearch, onSelect, onAdd }) => (
           onKeyDown={(e) => e.key === 'Enter' && search && !terms.length && onAdd(search)}
         />
       </div>
+      
+      {/* Tags filter */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={selectedTag === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => onTagSelect('all')}
+            className="text-xs"
+          >
+            All
+          </Button>
+          {tags.map(tag => (
+            <Button
+              key={tag}
+              variant={selectedTag === tag ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onTagSelect(tag)}
+              className="text-xs"
+            >
+              <Tag className="h-3 w-3 mr-1" />
+              {tag}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
 
     {/* Scrollable content */}
@@ -33,9 +60,22 @@ const ListView = ({ terms, search, onSearch, onSelect, onAdd }) => (
             <div className="font-medium text-base mb-1 text-gray-900 break-words">
               {term.term || "Untitled"}
             </div>
-            <div className="text-sm text-gray-700 line-clamp-2 break-words">
+            <div className="text-sm text-gray-700 line-clamp-2 break-words mb-2">
               {term.definition || "Tap to add definition"}
             </div>
+            {term.tags && term.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {term.tags.map(tag => (
+                  <span 
+                    key={tag}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
+                  >
+                    <Tag className="h-2 w-2 mr-1" />
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {terms.length === 0 && (
@@ -59,8 +99,9 @@ const ListView = ({ terms, search, onSearch, onSelect, onAdd }) => (
   </div>
 );
 
-const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, isListening, setIsListening, feedback, setFeedback, isGeneratingAudio, setIsGeneratingAudio }) => {
+const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, isListening, setIsListening, feedback, setFeedback, isGeneratingAudio, setIsGeneratingAudio, onDelete }) => {
   const [recognition, setRecognition] = useState(null);
+  const [newTag, setNewTag] = useState('');
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -155,6 +196,26 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
     localStorage.setItem('elevenLabsKey', key);
   };
 
+  const addTag = () => {
+    if (newTag.trim() && !term.tags?.includes(newTag.trim())) {
+      const updatedTags = [...(term.tags || []), newTag.trim()];
+      onChange('tags', updatedTags);
+      setNewTag('');
+    }
+  };
+
+  const removeTag = (tagToRemove) => {
+    const updatedTags = term.tags?.filter(tag => tag !== tagToRemove) || [];
+    onChange('tags', updatedTags);
+  };
+
+  const handleDelete = () => {
+    if (confirm('Delete this term?')) {
+      onDelete(term.id);
+      onBack();
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-full">
       {/* Fixed header */}
@@ -171,11 +232,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
           variant="outline" 
           size="sm"
           className="text-red-700 border-red-300 hover:bg-red-50 hover:border-red-400"
-          onClick={() => {
-            if (confirm('Delete this term?')) {
-              onBack();
-            }
-          }}
+          onClick={handleDelete}
         >
           Delete
         </Button>
@@ -275,6 +332,53 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
             className="w-full min-h-40 text-base resize-none bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
             rows={10}
           />
+
+          {/* Tags Section */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-gray-700">Tags</label>
+            
+            {/* Current tags */}
+            {term?.tags && term.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {term.tags.map(tag => (
+                  <span 
+                    key={tag}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+                  >
+                    <Tag className="h-3 w-3 mr-1" />
+                    {tag}
+                    <button
+                      onClick={() => removeTag(tag)}
+                      className="ml-2 hover:text-blue-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Add new tag */}
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Add a tag..."
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addTag()}
+                className="flex-1 text-sm"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addTag}
+                disabled={!newTag.trim()}
+                className="text-blue-700 border-blue-300 hover:bg-blue-100"
+              >
+                <Tag className="h-3 w-3 mr-1" />
+                Add
+              </Button>
+            </div>
+          </div>
         </div>
       </ScrollArea>
     </div>
@@ -290,39 +394,113 @@ export default function GlossaryApp() {
   const [feedback, setFeedback] = useState('');
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [elevenLabsKey, setElevenLabsKey] = useState(localStorage.getItem('elevenLabsKey') || '');
+  const [tags, setTags] = useState([]);
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // Load terms from Firebase
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem('glossary') || '[]');
-    const defaultTerms = saved.length ? saved : [
-      { id: 1, term: "Algorithm", definition: "Step-by-step procedure for solving problems" },
-      { id: 2, term: "API", definition: "Application Programming Interface" },
-      { id: 3, term: "Database", definition: "Structured collection of data" }
-    ];
-    setTerms(defaultTerms);
+    loadTerms();
+    loadTags();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('glossary', JSON.stringify(terms));
-  }, [terms]);
-
-  const filtered = terms.filter(t => 
-    t.term.toLowerCase().includes(search.toLowerCase()) || 
-    t.definition.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const handleAdd = (searchTerm = '') => {
-    const term = { id: crypto.randomUUID(), term: searchTerm, definition: "" };
-    setTerms([term, ...terms]);
-    setSelected(term);
-    setView('detail');
-    if (searchTerm) setSearch('');
+  const loadTerms = async () => {
+    try {
+      setLoading(true);
+      const allTerms = await glossaryService.getAllTerms();
+      setTerms(allTerms);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading terms:', err);
+      setError('Failed to load terms. Please check your Firebase configuration.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSave = (field, value) => {
+  const loadTags = async () => {
+    try {
+      const allTags = await glossaryService.getAllTags();
+      setTags(allTags);
+    } catch (err) {
+      console.error('Error loading tags:', err);
+    }
+  };
+
+  const getFilteredTerms = () => {
+    let filtered = terms;
+
+    // Filter by tag
+    if (selectedTag !== 'all') {
+      filtered = filtered.filter(term => term.tags?.includes(selectedTag));
+    }
+
+    // Filter by search
+    if (search) {
+      filtered = filtered.filter(term => 
+        term.term.toLowerCase().includes(search.toLowerCase()) || 
+        term.definition.toLowerCase().includes(search.toLowerCase()) ||
+        term.mandarin?.toLowerCase().includes(search.toLowerCase()) ||
+        term.tags?.some(tag => tag.toLowerCase().includes(search.toLowerCase()))
+      );
+    }
+
+    return filtered;
+  };
+
+  const handleAdd = async (searchTerm = '') => {
+    try {
+      const termData = {
+        term: searchTerm,
+        definition: "",
+        ipa: "",
+        mandarin: "",
+        tags: []
+      };
+      
+      const termId = await glossaryService.addTerm(termData);
+      const newTerm = { id: termId, ...termData };
+      
+      setTerms([newTerm, ...terms]);
+      setSelected(newTerm);
+      setView('detail');
+      if (searchTerm) setSearch('');
+    } catch (err) {
+      console.error('Error adding term:', err);
+      setError('Failed to add term. Please try again.');
+    }
+  };
+
+  const handleSave = async (field, value) => {
     if (!selected) return;
-    const updated = terms.map(t => t.id === selected.id ? {...t, [field]: value} : t);
-    setTerms(updated);
-    setSelected({...selected, [field]: value});
+    
+    try {
+      await glossaryService.updateTerm(selected.id, { [field]: value });
+      
+      const updated = terms.map(t => t.id === selected.id ? {...t, [field]: value} : t);
+      setTerms(updated);
+      setSelected({...selected, [field]: value});
+      
+      // Reload tags if we updated tags
+      if (field === 'tags') {
+        loadTags();
+      }
+    } catch (err) {
+      console.error('Error updating term:', err);
+      setError('Failed to update term. Please try again.');
+    }
+  };
+
+  const handleDelete = async (termId) => {
+    try {
+      await glossaryService.deleteTerm(termId);
+      setTerms(terms.filter(t => t.id !== termId));
+      loadTags(); // Reload tags in case this term had unique tags
+    } catch (err) {
+      console.error('Error deleting term:', err);
+      setError('Failed to delete term. Please try again.');
+    }
   };
 
   const handleBack = () => {
@@ -335,21 +513,54 @@ export default function GlossaryApp() {
     setView('detail');
   };
 
+  const handleTagSelect = (tag) => {
+    setSelectedTag(tag);
+  };
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-md mx-auto min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading glossary...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full max-w-md mx-auto min-h-screen bg-white flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">⚠️</div>
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={loadTerms} className="bg-blue-600 hover:bg-blue-700">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-md mx-auto min-h-screen bg-white">
       {view === 'list' ? (
         <ListView 
-          terms={filtered}
+          terms={getFilteredTerms()}
           search={search}
           onSearch={(e) => setSearch(e.target.value)}
           onSelect={handleSelect}
           onAdd={handleAdd}
+          tags={tags}
+          selectedTag={selectedTag}
+          onTagSelect={handleTagSelect}
         />
       ) : (
         <DetailView 
           term={selected}
           onBack={handleBack}
           onChange={handleSave}
+          onDelete={handleDelete}
           elevenLabsKey={elevenLabsKey}
           setElevenLabsKey={setElevenLabsKey}
           isListening={isListening}
