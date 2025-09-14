@@ -3,14 +3,12 @@ import { getFirestore } from 'firebase/firestore';
 
 // Your Firebase configuration
 const firebaseConfig = {
-  // You'll need to add your actual Firebase config here
-  // Get this from Firebase Console > Project Settings > General > Your apps
-  apiKey: "your-api-key",
+  apiKey: "AIzaSyBbVxa9eh2JwT124nU-kLH_yF7V8MybimI",
   authDomain: "fingloss-11b6a.firebaseapp.com",
   projectId: "fingloss-11b6a",
-  storageBucket: "fingloss-11b6a.appspot.com",
-  messagingSenderId: "your-sender-id",
-  appId: "your-app-id"
+  storageBucket: "fingloss-11b6a.firebasestorage.app",
+  messagingSenderId: "299026518489",
+  appId: "1:299026518489:web:d6f8a4cefb91cb55bd49c8"
 };
 
 // Initialize Firebase
