@@ -1,10 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff, Tag, X } from 'lucide-react';
 import { glossaryService } from '@/lib/glossaryService';
+
+// Simple debounce function
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
 
 const ListView = ({ terms, search, onSearch, onSelect, onAdd, tags, selectedTag, onTagSelect }) => (
   <div className="flex flex-col h-screen w-full">
@@ -102,6 +115,13 @@ const ListView = ({ terms, search, onSearch, onSelect, onAdd, tags, selectedTag,
 const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, isListening, setIsListening, feedback, setFeedback, isGeneratingAudio, setIsGeneratingAudio, onDelete }) => {
   const [recognition, setRecognition] = useState(null);
   const [newTag, setNewTag] = useState('');
+  const [localTerm, setLocalTerm] = useState(term);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync local state with prop changes
+  useEffect(() => {
+    setLocalTerm(term);
+  }, [term]);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -113,14 +133,14 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
       
       recognitionInstance.onresult = (event) => {
         const spoken = event.results[0][0].transcript.toLowerCase().trim();
-        const target = term?.term?.toLowerCase().trim();
+        const target = localTerm?.term?.toLowerCase().trim();
         
         if (spoken === target) {
           setFeedback('Perfect! 🎉');
         } else if (spoken.includes(target) || target.includes(spoken)) {
           setFeedback('Close! Try again.');
         } else {
-          setFeedback(`You said "${spoken}" - try saying "${term?.term}"`);
+          setFeedback(`You said "${spoken}" - try saying "${localTerm?.term}"`);
         }
         setIsListening(false);
       };
@@ -132,7 +152,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
       
       setRecognition(recognitionInstance);
     }
-  }, [term?.term, setFeedback, setIsListening]);
+  }, [localTerm?.term, setFeedback, setIsListening]);
 
   const startListening = () => {
     if (recognition) {
@@ -150,7 +170,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
   };
 
   const speakWithElevenLabs = async () => {
-    if (!elevenLabsKey || !term?.term) return;
+    if (!elevenLabsKey || !localTerm?.term) return;
     
     setIsGeneratingAudio(true);
     try {
@@ -162,7 +182,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
           'xi-api-key': elevenLabsKey
         },
         body: JSON.stringify({
-          text: term.term,
+          text: localTerm.term,
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
             stability: 0.5,
@@ -184,8 +204,8 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
   };
 
   const speakTermFallback = () => {
-    if ('speechSynthesis' in window && term?.term) {
-      const utterance = new SpeechSynthesisUtterance(term.term);
+    if ('speechSynthesis' in window && localTerm?.term) {
+      const utterance = new SpeechSynthesisUtterance(localTerm.term);
       utterance.lang = 'en-AU';
       speechSynthesis.speak(utterance);
     }
@@ -196,16 +216,40 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
     localStorage.setItem('elevenLabsKey', key);
   };
 
+  // Debounced save function
+  const debouncedSave = useCallback(
+    debounce(async (field, value) => {
+      if (isSaving) return;
+      setIsSaving(true);
+      try {
+        await onChange(field, value);
+      } catch (error) {
+        console.error('Error saving:', error);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 500),
+    [onChange, isSaving]
+  );
+
+  // Handle input changes with local state
+  const handleInputChange = (field, value) => {
+    setLocalTerm(prev => ({ ...prev, [field]: value }));
+    debouncedSave(field, value);
+  };
+
   const addTag = () => {
-    if (newTag.trim() && !term.tags?.includes(newTag.trim())) {
-      const updatedTags = [...(term.tags || []), newTag.trim()];
+    if (newTag.trim() && !localTerm.tags?.includes(newTag.trim())) {
+      const updatedTags = [...(localTerm.tags || []), newTag.trim()];
+      setLocalTerm(prev => ({ ...prev, tags: updatedTags }));
       onChange('tags', updatedTags);
       setNewTag('');
     }
   };
 
   const removeTag = (tagToRemove) => {
-    const updatedTags = term.tags?.filter(tag => tag !== tagToRemove) || [];
+    const updatedTags = localTerm.tags?.filter(tag => tag !== tagToRemove) || [];
+    setLocalTerm(prev => ({ ...prev, tags: updatedTags }));
     onChange('tags', updatedTags);
   };
 
@@ -244,8 +288,8 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
           <div className="space-y-2">
             <Input 
               placeholder="Term name..."
-              value={term?.term || ''}
-              onChange={(e) => onChange('term', e.target.value)}
+              value={localTerm?.term || ''}
+              onChange={(e) => handleInputChange('term', e.target.value)}
               className="w-full h-12 text-lg font-medium bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
             />
             
@@ -273,7 +317,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
             )}
 
             {/* Pronunciation Practice Section */}
-            {term?.term && (
+            {localTerm?.term && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-blue-800">Practice Pronunciation</span>
@@ -306,7 +350,7 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
                 )}
                 {isListening && (
                   <div className="text-sm text-blue-600 italic">
-                    🎤 Listening... Say "{term.term}"
+                    🎤 Listening... Say "{localTerm.term}"
                   </div>
                 )}
               </div>
@@ -315,20 +359,20 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
 
           <Input 
             placeholder="IPA pronunciation (e.g., /ˌeɪ piː ˈaɪ/)..."
-            value={term?.ipa || ''}
-            onChange={(e) => onChange('ipa', e.target.value)}
+            value={localTerm?.ipa || ''}
+            onChange={(e) => handleInputChange('ipa', e.target.value)}
             className="w-full h-12 text-base font-mono bg-white border-gray-300 text-blue-600 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
           />
           <Input 
             placeholder="Mandarin translation..."
-            value={term?.mandarin || ''}
-            onChange={(e) => onChange('mandarin', e.target.value)}
+            value={localTerm?.mandarin || ''}
+            onChange={(e) => handleInputChange('mandarin', e.target.value)}
             className="w-full h-12 text-base bg-white border-gray-300 text-green-700 placeholder-gray-500 focus:border-green-500 focus:ring-green-500"
           />
           <Textarea 
             placeholder="Add definition..."
-            value={term?.definition || ''}
-            onChange={(e) => onChange('definition', e.target.value)}
+            value={localTerm?.definition || ''}
+            onChange={(e) => handleInputChange('definition', e.target.value)}
             className="w-full min-h-40 text-base resize-none bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
             rows={10}
           />
@@ -338,9 +382,9 @@ const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, i
             <label className="text-sm font-medium text-gray-700">Tags</label>
             
             {/* Current tags */}
-            {term?.tags && term.tags.length > 0 && (
+            {localTerm?.tags && localTerm.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {term.tags.map(tag => (
+                {localTerm.tags.map(tag => (
                   <span 
                     key={tag}
                     className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
