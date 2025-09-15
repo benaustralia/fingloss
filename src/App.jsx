@@ -15,7 +15,6 @@ export default function GlossaryApp() {
   const websocketRef = useRef(null);
   const audioRecorderRef = useRef(null);
   const update = (u) => setS(p => ({ ...p, ...u }));
-
   useEffect(() => { (async () => { try { update({ loading: true }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags, error: null, loading: false }); } catch (err) { update({ error: 'Failed to load data. Please check Firebase configuration.', loading: false }); } })(); }, []);
   useEffect(() => { update({ localTerm: s.selected }); }, [s.selected]);
   useEffect(() => { const handleClickOutside = (e) => { if (s.tagDropdownOpen && !e.target.closest('.tag-dropdown')) { update({ tagDropdownOpen: false }); } }; document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [s.tagDropdownOpen]);
