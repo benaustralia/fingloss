@@ -111,45 +111,75 @@ export default function GlossaryApp() {
             )}
           </div>
           {s.localTerm?.term && (
-            <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3">
-              <h3 className="font-medium text-foreground">Pronunciation Practice</h3>
-              <div className="flex gap-2">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                  <Mic className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100">Practice Pronunciation</h3>
+              </div>
+              
+              <div className="text-center space-y-3">
+                <p className="text-sm text-blue-700 dark:text-blue-300">Say the word clearly and get instant feedback</p>
+                
                 {!s.isRecording ? (
-                  <Button onClick={h.startRecording} className="flex-1 h-10">
-                    <Mic className="h-4 w-4 mr-2" />
-                    Start Recording
+                  <Button onClick={h.startRecording} className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg">
+                    <Mic className="h-5 w-5 mr-2" />
+                    Start Speaking
                   </Button>
                 ) : (
-                  <Button onClick={h.stopRecording} variant="destructive" className="flex-1 h-10">
-                    <MicOff className="h-4 w-4 mr-2" />
-                    Stop Recording
-                  </Button>
+                  <div className="space-y-3">
+                    <Button onClick={h.stopRecording} variant="destructive" className="w-full h-12 font-medium rounded-lg shadow-lg">
+                      <MicOff className="h-5 w-5 mr-2" />
+                      Stop & Analyze
+                    </Button>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">Listening... Speak now!</span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div className="bg-gradient-to-r from-red-500 to-orange-500 h-3 rounded-full transition-all duration-200 ease-out" 
+                             style={{ width: `${Math.min(s.volume * 200, 100)}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
-              {s.isRecording && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-muted-foreground">Recording... Speak clearly</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full transition-all duration-100" style={{ width: `${Math.min(s.volume * 100, 100)}%` }}></div>
-                  </div>
-                </div>
-              )}
+              
               {s.pronunciationScore !== null && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Pronunciation Score:</span>
-                    <span className={`text-lg font-bold ${s.pronunciationScore >= 80 ? 'text-green-600' : s.pronunciationScore >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {s.pronunciationScore}%
-                    </span>
-                  </div>
-                  {s.pronunciationFeedback && (
-                    <div className="text-sm text-muted-foreground bg-muted p-2 rounded">
-                      {s.pronunciationFeedback}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="text-center space-y-3">
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Your Score:</span>
+                      <div className={`text-3xl font-bold ${s.pronunciationScore >= 80 ? 'text-green-600' : s.pronunciationScore >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
+                        {s.pronunciationScore}%
+                      </div>
                     </div>
-                  )}
+                    
+                    <div className="flex justify-center">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${s.pronunciationScore >= 80 ? 'bg-green-100 dark:bg-green-900' : s.pronunciationScore >= 60 ? 'bg-yellow-100 dark:bg-yellow-900' : 'bg-red-100 dark:bg-red-900'}`}>
+                        {s.pronunciationScore >= 80 ? (
+                          <CheckCircle className="h-8 w-8 text-green-600" />
+                        ) : s.pronunciationScore >= 60 ? (
+                          <AlertCircle className="h-8 w-8 text-yellow-500" />
+                        ) : (
+                          <X className="h-8 w-8 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                    
+                    {s.pronunciationFeedback && (
+                      <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                        <strong>Feedback:</strong> {s.pronunciationFeedback}
+                      </div>
+                    )}
+                    
+                    <Button onClick={h.startRecording} variant="outline" className="w-full">
+                      Try Again
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
