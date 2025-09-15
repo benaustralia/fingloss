@@ -17,4 +17,16 @@ export default defineConfig({
       usePolling: true,
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'firebase': ['firebase/firestore', 'firebase/app'],
+          'lucide': ['lucide-react'],
+          'ui': ['@/components/ui/input', '@/components/ui/button', '@/components/ui/textarea', '@/components/ui/scroll-area']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
+  }
 })

@@ -2,6 +2,7 @@
   "name": "fingloss",
   "version": "1.0.0",
   "description": "A pronunciation-focused glossary application",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
