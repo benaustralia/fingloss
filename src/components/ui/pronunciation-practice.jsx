@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useSpeechRecognition } from 'react-speech-recognition';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { Button } from './button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './card';
 import { Progress } from './progress';
 import { Badge } from './badge';
-import { Mic, MicOff, Volume2, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './dialog';
+import { Mic, MicOff, CheckCircle, AlertCircle, X } from 'lucide-react';
 
-export function PronunciationPractice({ term, onScore }) {
+export function PronunciationPractice({ term, onScore, open, onOpenChange }) {
   const [isListening, setIsListening] = useState(false);
   const [score, setScore] = useState(null);
   const [feedback, setFeedback] = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [manualStop, setManualStop] = useState(false);
 
   const {
     transcript,
@@ -20,20 +21,117 @@ export function PronunciationPractice({ term, onScore }) {
     browserSupportsSpeechRecognition
   } = useSpeechRecognition();
 
+  // Reset state when modal opens
+  useEffect(() => {
+    if (open) {
+      resetTranscript();
+      setScore(null);
+      setFeedback('');
+      setIsListening(false);
+      setManualStop(false);
+    }
+  }, [open, resetTranscript]);
+
   // Calculate pronunciation score
   const calculateScore = (spoken, target) => {
     if (!spoken || !target) return 0;
     
-    const spokenLower = spoken.toLowerCase().trim();
-    const targetLower = target.toLowerCase().trim();
+    // Debug logging
+    console.log('Scoring:', { spoken, target });
     
-    if (spokenLower === targetLower) return 100;
-    if (spokenLower.includes(targetLower) || targetLower.includes(spokenLower)) return 85;
+    // Special handling for problematic words that speech recognition struggles with
+    const problematicWords = {
+      'underscore': ['underscore', 'under score', 'under-score', 'under_score', '_'],
+      'ampersand': ['ampersand', 'and symbol', 'and sign', '&'],
+      'asterisk': ['asterisk', 'star', '*'],
+      'parentheses': ['parentheses', 'parens', 'brackets', '()'],
+      'brackets': ['brackets', 'square brackets', '[]'],
+      'curly braces': ['curly braces', 'braces', '{}'],
+      'backslash': ['backslash', 'back slash', '\\'],
+      'forward slash': ['forward slash', 'slash', '/'],
+      'pipe': ['pipe', 'vertical bar', '|'],
+      'tilde': ['tilde', '~'],
+      'hash': ['hash', '#'],
+      'at symbol': ['at symbol', 'at sign', '@'],
+      'percent': ['percent', '%'],
+      'dollar': ['dollar', '$'],
+      'exclamation': ['exclamation', 'exclamation mark', '!'],
+      'question': ['question', 'question mark', '?'],
+      'comma': ['comma', ','],
+      'period': ['period', 'dot', '.'],
+      'colon': ['colon', ':'],
+      'semicolon': ['semicolon', ';'],
+      'quotes': ['quotes', 'quotation marks', '"'],
+      'apostrophe': ['apostrophe', "'"]
+    };
+    
+    // Check if the target is a problematic word
+    const targetLower = target.toLowerCase();
+    const isProblematic = problematicWords[targetLower];
+    
+    if (isProblematic) {
+      const spokenLower = spoken.toLowerCase().trim();
+      
+      // Check if the spoken word matches any of the acceptable variations
+      for (const variation of isProblematic) {
+        if (spokenLower === variation || spokenLower.includes(variation)) {
+          console.log('Matched problematic word variation:', { spoken, target, variation });
+          return 100;
+        }
+      }
+      
+      // If no exact match, try fuzzy matching on the variations
+      let bestScore = 0;
+      for (const variation of isProblematic) {
+        const distance = levenshteinDistance(spokenLower, variation);
+        const maxLength = Math.max(spokenLower.length, variation.length);
+        const score = Math.round(((maxLength - distance) / maxLength) * 100);
+        bestScore = Math.max(bestScore, score);
+      }
+      
+      console.log('Problematic word fuzzy match:', { spoken, target, bestScore });
+      return bestScore;
+    }
+    
+    // Normalize both strings: convert to lowercase, trim, and handle special characters
+    // Only replace underscores with spaces if the target actually contains underscores
+    const normalizeText = (text, hasUnderscores = false) => {
+      let normalized = text.toLowerCase().trim();
+      
+      if (hasUnderscores) {
+        normalized = normalized.replace(/_/g, ' ');  // Replace underscores with spaces
+      }
+      
+      // Remove other special characters for comparison, but keep letters and spaces
+      normalized = normalized.replace(/[^\w\s]/g, '');
+      // Normalize multiple spaces to single space
+      normalized = normalized.replace(/\s+/g, ' ').trim();
+      
+      return normalized;
+    };
+    
+    const hasUnderscores = target.includes('_');
+    const spokenNormalized = normalizeText(spoken, hasUnderscores);
+    const targetNormalized = normalizeText(target, hasUnderscores);
+    
+    console.log('Normalized:', { 
+      hasUnderscores, 
+      spokenNormalized, 
+      targetNormalized,
+      exactMatch: spokenNormalized === targetNormalized
+    });
+    
+    if (spokenNormalized === targetNormalized) return 100;
+    if (spokenNormalized.includes(targetNormalized) || targetNormalized.includes(spokenNormalized)) return 85;
     
     // Levenshtein distance-based similarity
-    const distance = levenshteinDistance(spokenLower, targetLower);
-    const maxLength = Math.max(spokenLower.length, targetLower.length);
-    return Math.round(((maxLength - distance) / maxLength) * 100);
+    const distance = levenshteinDistance(spokenNormalized, targetNormalized);
+    const maxLength = Math.max(spokenNormalized.length, targetNormalized.length);
+    const score = Math.round(((maxLength - distance) / maxLength) * 100);
+    
+    console.log('Levenshtein score:', { distance, maxLength, score });
+    
+    return score;
   };
 
   // Simple Levenshtein distance calculation
@@ -63,42 +161,66 @@ export function PronunciationPractice({ term, onScore }) {
 
   // Handle speech recognition result
   useEffect(() => {
-    if (finalTranscript && term) {
+    if (finalTranscript && term && !manualStop) {
+      console.log('Speech recognition result:', { 
+        finalTranscript, 
+        term, 
+        interimTranscript,
+        transcript 
+      });
+      
       const pronunciationScore = calculateScore(finalTranscript, term);
       setScore(pronunciationScore);
       
-      let feedbackMessage = `You said: "${finalTranscript}"`;
-      if (pronunciationScore >= 90) {
-        feedbackMessage += " - Excellent!";
-      } else if (pronunciationScore >= 70) {
-        feedbackMessage += " - Good job!";
-      } else if (pronunciationScore >= 50) {
-        feedbackMessage += " - Keep practicing!";
-      } else {
-        feedbackMessage += " - Try again!";
-      }
+      // Show feedback with appropriate normalization info
+      const normalizeText = (text, hasUnderscores = false) => {
+        let normalized = text.toLowerCase().trim();
+        if (hasUnderscores) {
+          normalized = normalized.replace(/_/g, ' ');
+        }
+        normalized = normalized.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+        return normalized;
+      };
       
-      setFeedback(feedbackMessage);
+      const hasUnderscores = term.includes('_');
+      const normalizedTerm = normalizeText(term, hasUnderscores);
+      const normalizedSpoken = normalizeText(finalTranscript, hasUnderscores);
+      
+      // Special handling for problematic words - show better feedback
+      const targetLower = term.toLowerCase();
+      const problematicWords = {
+        'underscore': ['underscore', 'under score', 'under-score', 'under_score', '_'],
+        'ampersand': ['ampersand', 'and symbol', 'and sign', '&'],
+        'asterisk': ['asterisk', 'star', '*'],
+        'parentheses': ['parentheses', 'parens', 'brackets', '()'],
+        'brackets': ['brackets', 'square brackets', '[]'],
+        'curly braces': ['curly braces', 'braces', '{}'],
+        'backslash': ['backslash', 'back slash', '\\'],
+        'forward slash': ['forward slash', 'slash', '/'],
+        'pipe': ['pipe', 'vertical bar', '|'],
+        'tilde': ['tilde', '~'],
+        'hash': ['hash', '#'],
+        'at symbol': ['at symbol', 'at sign', '@'],
+        'percent': ['percent', '%'],
+        'dollar': ['dollar', '$'],
+        'exclamation': ['exclamation', 'exclamation mark', '!'],
+        'question': ['question', 'question mark', '?'],
+        'comma': ['comma', ','],
+        'period': ['period', 'dot', '.'],
+        'colon': ['colon', ':'],
+        'semicolon': ['semicolon', ';'],
+        'quotes': ['quotes', 'quotation marks', '"'],
+        'apostrophe': ['apostrophe', "'"]
+      };
+      
+      const isProblematic = problematicWords[targetLower];
+      
+      setFeedback('');
       onScore?.(pronunciationScore, finalTranscript);
       setIsListening(false);
     }
   }, [finalTranscript, term, onScore]);
 
-  // Play audio using Web Speech API
-  const playAudio = () => {
-    if (!term) return;
-    
-    setIsPlaying(true);
-    const utterance = new SpeechSynthesisUtterance(term);
-    utterance.rate = 0.8;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    
-    utterance.onend = () => setIsPlaying(false);
-    utterance.onerror = () => setIsPlaying(false);
-    
-    speechSynthesis.speak(utterance);
-  };
 
   // Start listening
   const startListening = () => {
@@ -107,15 +229,39 @@ export function PronunciationPractice({ term, onScore }) {
       return;
     }
     
+    // Reset everything for a fresh attempt
     resetTranscript();
     setScore(null);
     setFeedback('');
     setIsListening(true);
+    setManualStop(false);
+    
+    // Configure speech recognition with better settings
+    SpeechRecognition.startListening({
+      continuous: false,
+      language: 'en-US',
+      interimResults: true,
+      maxAlternatives: 1
+    });
   };
 
   // Stop listening
   const stopListening = () => {
+    console.log('Stop listening clicked');
+    setManualStop(true);
     setIsListening(false);
+    SpeechRecognition.stopListening();
+    
+    // Wait a moment for speech recognition to process, then use current transcript
+    setTimeout(() => {
+      const currentTranscript = transcript || interimTranscript;
+      if (currentTranscript && term) {
+        console.log('Processing manual stop with transcript:', currentTranscript);
+        const pronunciationScore = calculateScore(currentTranscript, term);
+        setScore(pronunciationScore);
+        onScore?.(pronunciationScore, currentTranscript);
+      }
+    }, 100);
   };
 
   // Reset practice
@@ -124,144 +270,63 @@ export function PronunciationPractice({ term, onScore }) {
     setScore(null);
     setFeedback('');
     setIsListening(false);
+    setManualStop(false);
   };
 
-  if (!browserSupportsSpeechRecognition) {
-    return (
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mic className="h-5 w-5" />
-            Pronunciation Practice
-          </CardTitle>
-          <CardDescription>
-            Speech recognition is not supported in this browser
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Mic className="h-5 w-5" />
-          Pronunciation Practice
-        </CardTitle>
-        <CardDescription>
-          Practice pronouncing: <strong>{term}</strong>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Audio Playback */}
-        <div className="flex gap-2">
-          <Button
-            onClick={playAudio}
-            disabled={isPlaying || !term}
-            variant="outline"
-            className="flex-1"
-          >
-            <Volume2 className="h-4 w-4 mr-2" />
-            {isPlaying ? 'Playing...' : 'Listen'}
-          </Button>
-        </div>
-
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md h-48 flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mic className="h-5 w-5" />
+            {term}
+          </DialogTitle>
+        </DialogHeader>
+        
+        {!browserSupportsSpeechRecognition ? (
+          <div className="text-center py-8 flex-1 flex items-center justify-center">
+            <p className="text-muted-foreground">
+              Speech recognition is not supported in this browser
+            </p>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col justify-center">
         {/* Practice Controls */}
-        <div className="flex gap-2">
-          {!isListening ? (
-            <Button
-              onClick={startListening}
-              disabled={!term}
-              className="flex-1"
-            >
-              <Mic className="h-4 w-4 mr-2" />
-              Start Speaking
-            </Button>
-          ) : (
-            <Button
-              onClick={stopListening}
-              variant="destructive"
-              className="flex-1"
-            >
-              <MicOff className="h-4 w-4 mr-2" />
-              Stop Speaking
-            </Button>
-          )}
+        <div className="flex gap-3 justify-center items-center min-h-[60px]">
+          <Button
+            onClick={isListening ? stopListening : startListening}
+            disabled={!term}
+            variant={isListening ? "destructive" : "default"}
+            className={`w-auto px-6 transition-all duration-200 ${
+              isListening ? 'animate-pulse' : ''
+            }`}
+          >
+            {isListening ? (
+              <>
+                <div className="w-2 h-2 bg-white rounded-full mr-2 animate-ping" />
+                <MicOff className="h-4 w-4 mr-2" />
+                Recording...
+              </>
+            ) : (
+              <>
+                <Mic className="h-4 w-4 mr-2" />
+                Record
+              </>
+            )}
+          </Button>
           
-          {(score !== null || transcript) && (
-            <Button
-              onClick={resetPractice}
-              variant="outline"
+          {score !== null && (
+            <Badge
+              variant={score >= 80 ? 'default' : 'destructive'}
+              className="text-lg px-4 py-2"
             >
-              Reset
-            </Button>
+              {score}%
+            </Badge>
           )}
         </div>
-
-        {/* Live Transcript */}
-        {(transcript || interimTranscript) && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium">What you're saying:</p>
-            <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm">
-                {transcript && <span className="font-medium">{transcript}</span>}
-                {interimTranscript && (
-                  <span className="text-muted-foreground italic">
-                    {interimTranscript}
-                  </span>
-                )}
-              </p>
-            </div>
           </div>
         )}
-
-        {/* Results */}
-        {score !== null && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Your Score:</span>
-              <Badge
-                variant={score >= 80 ? 'default' : score >= 60 ? 'secondary' : 'destructive'}
-                className="text-lg px-3 py-1"
-              >
-                {score}%
-              </Badge>
-            </div>
-            
-            <Progress value={score} className="h-2" />
-            
-            <div className="flex items-center justify-center">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                score >= 80 ? 'bg-green-100 text-green-600' :
-                score >= 60 ? 'bg-yellow-100 text-yellow-600' :
-                'bg-red-100 text-red-600'
-              }`}>
-                {score >= 80 ? (
-                  <CheckCircle className="h-6 w-6" />
-                ) : score >= 60 ? (
-                  <AlertCircle className="h-6 w-6" />
-                ) : (
-                  <X className="h-6 w-6" />
-                )}
-              </div>
-            </div>
-            
-            {feedback && (
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm">{feedback}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Instructions */}
-        {!isListening && score === null && (
-          <div className="text-center text-sm text-muted-foreground">
-            Click "Start Speaking" and say the word clearly
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -4,15 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PronunciationPractice } from '@/components/ui/pronunciation-practice';
-import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2 } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2, Mic } from 'lucide-react';
 import { glossaryService } from '@/lib/glossaryService';
 
 const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
-const APP_VERSION = "Version 5";
+const APP_VERSION = "Version 9";
 
 export default function GlossaryApp() {
-  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, isGeneratingAudio: false });
-  const update = (u) => setS(p => ({ ...p, ...u }));
+  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, isGeneratingAudio: false, pronunciationModalOpen: false });
+  const update = (u) => setS(p => ({ ...p, ...u })) ;
   useEffect(() => { (async () => { try { update({ loading: true }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags, error: null, loading: false }); } catch (err) { update({ error: 'Failed to load data. Please check Firebase configuration.', loading: false }); } })(); }, []);
   useEffect(() => { update({ localTerm: s.selected }); }, [s.selected]);
   useEffect(() => { const handleClickOutside = (e) => { if (s.tagDropdownOpen && !e.target.closest('.tag-dropdown')) { update({ tagDropdownOpen: false }); } }; document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [s.tagDropdownOpen]);
@@ -104,10 +104,14 @@ export default function GlossaryApp() {
             )}
           </div>
           {s.localTerm?.term && (
-            <PronunciationPractice 
-              term={s.localTerm.term} 
-              onScore={h.onPronunciationScore}
-            />
+            <Button
+              onClick={() => update({ pronunciationModalOpen: true })}
+              variant="outline"
+              className="w-full"
+            >
+              <Mic className="h-4 w-4 mr-2" />
+              Practice Pronunciation
+            </Button>
           )}
         </div>
         <Input placeholder="IPA" value={s.localTerm?.ipa || ''} onChange={(e) => h.inputChange('ipa', e.target.value)} className="w-full h-12 text-base font-mono" />
@@ -119,5 +123,15 @@ export default function GlossaryApp() {
         <p className="text-xs text-muted-foreground">{APP_VERSION}</p>
       </div>
     </div>}
+    
+    {/* Pronunciation Practice Modal */}
+    {s.localTerm?.term && (
+      <PronunciationPractice 
+        term={s.localTerm.term} 
+        onScore={h.onPronunciationScore}
+        open={s.pronunciationModalOpen}
+        onOpenChange={(open) => update({ pronunciationModalOpen: open })}
+      />
+    )}
   </div>;
 }
