@@ -40,7 +40,6 @@ export default function GlossaryApp() {
 
   return <div className="w-full max-w-md mx-auto min-h-screen bg-background flex flex-col">
     {s.view === 'list' ? <div className="flex flex-col h-screen w-full">
-      <div className="flex-none p-4 border-b border-border bg-background">
         <div className="text-center mb-6"><h1 className="text-5xl font-bold text-primary" style={{ fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em' }}>fingloss</h1></div>
         <div className="flex gap-2 items-center">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search" value={s.search} onChange={(e) => update({ search: e.target.value })} className="w-full pl-10 h-10 text-sm" onKeyDown={(e) => e.key === 'Enter' && s.search && !s.terms.length && h.add(s.search)} /></div>
@@ -56,18 +55,17 @@ export default function GlossaryApp() {
             </div>}
           </div>}
         </div>
-      </div>
-      <div className="flex-1 relative">
-        <ScrollArea className="h-full">
-          <div className="divide-y divide-border">
-            {getFilteredTerms().map(term => <div key={term.id} className="p-4 hover:bg-accent active:bg-accent/80 cursor-pointer transition-colors" onClick={() => { update({ selected: term, view: 'detail' }); }}><div className="flex items-center gap-2 mb-1"><div className="font-medium text-base text-foreground break-words">{term.term || "Untitled"}</div>{term.ipa && <div className="text-sm text-muted-foreground font-mono">{term.ipa}</div>}</div>{term.mandarin && <div className="text-sm text-muted-foreground font-medium mb-1">{term.mandarin}</div>}<div className="text-sm text-muted-foreground line-clamp-2 break-words mb-2">{term.definition || "Tap to add definition"}</div>{term.tags && term.tags.length > 0 && <div className="flex flex-wrap gap-1">{term.tags.map(tag => <span key={tag} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary"><Tag className="h-2 w-2 mr-1" />{tag}</span>)}</div>}</div>)}
-            {s.terms.length === 0 && <div className="p-8 text-center text-muted-foreground">{s.search ? 'No matches - press Enter to create' : 'No terms yet'}</div>}
-          </div>
-        </ScrollArea>
-        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none"></div>
-      </div>
-      <div className="flex-none p-4"><div className="flex gap-2"><Button className="flex-1 h-12" onClick={() => h.add()}><Plus className="h-4 w-4 mr-2" />Add Term</Button><Button className="flex-1 h-12" variant="outline" onClick={() => update({ view: 'import' })}>📥 Import</Button></div></div>
-    </div> : s.view === 'import' ? <div className="flex flex-col h-screen w-full">
+        <div className="flex-1 relative">
+          <ScrollArea className="h-full">
+            <div className="divide-y divide-border">
+              {getFilteredTerms().map(term => <div key={term.id} className="p-4 hover:bg-accent active:bg-accent/80 cursor-pointer transition-colors" onClick={() => { update({ selected: term, view: 'detail' }); }}><div className="flex items-center gap-2 mb-1"><div className="font-medium text-base text-foreground break-words">{term.term || "Untitled"}</div>{term.ipa && <div className="text-sm text-muted-foreground font-mono">{term.ipa}</div>}</div>{term.mandarin && <div className="text-sm text-muted-foreground font-medium mb-1">{term.mandarin}</div>}<div className="text-sm text-muted-foreground line-clamp-2 break-words mb-2">{term.definition || "Tap to add definition"}</div>{term.tags && term.tags.length > 0 && <div className="flex flex-wrap gap-1">{term.tags.map(tag => <span key={tag} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary"><Tag className="h-2 w-2 mr-1" />{tag}</span>)}</div>}</div>)}
+              {s.terms.length === 0 && <div className="p-8 text-center text-muted-foreground">{s.search ? 'No matches - press Enter to create' : 'No terms yet'}</div>}
+            </div>
+          </ScrollArea>
+          <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none"></div>
+        </div>
+        <div className="flex-none p-4"><div className="flex gap-2"><Button className="flex-1 h-12" onClick={() => h.add()}><Plus className="h-4 w-4 mr-2" />Add Term</Button><Button className="flex-1 h-12" variant="outline" onClick={() => update({ view: 'import' })}>📥 Import</Button></div></div>
+      </div> : s.view === 'import' ? <div className="flex flex-col h-screen w-full">
       <div className="flex-none p-4 border-b border-border bg-background flex justify-between items-center">
         <Button variant="ghost" className="h-12 px-4 text-base" onClick={() => update({ view: 'list' })}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
         <span className="text-lg font-medium">Import Terms</span>
