@@ -3,18 +3,17 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff, Tag, X, ChevronDown } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2 } from 'lucide-react';
 import { glossaryService } from '@/lib/glossaryService';
 
 const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
 
 export default function GlossaryApp() {
-  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', isListening: false, feedback: '', isGeneratingAudio: false, elevenLabsKey: localStorage.getItem('elevenLabsKey') || '', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', recognition: null, importJson: '', importStatus: '', tagDropdownOpen: false });
+  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, elevenLabsKey: localStorage.getItem('elevenLabsKey') || '', isGeneratingAudio: false });
   const update = (u) => setS(p => ({ ...p, ...u }));
 
   useEffect(() => { (async () => { try { update({ loading: true }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags, error: null, loading: false }); } catch (err) { update({ error: 'Failed to load data. Please check Firebase configuration.', loading: false }); } })(); }, []);
   useEffect(() => { update({ localTerm: s.selected }); }, [s.selected]);
-  useEffect(() => { if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) { const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition; const r = new SpeechRecognition(); Object.assign(r, { continuous: false, interimResults: false, lang: 'en-AU' }); r.onresult = (e) => { const spoken = e.results[0][0].transcript.toLowerCase().trim(); const target = s.localTerm?.term?.toLowerCase().trim(); update({ feedback: spoken === target ? 'Perfect! 🎉' : spoken.includes(target) || target.includes(spoken) ? 'Close! Try again.' : `You said "${spoken}" - try saying "${s.localTerm?.term}"`, isListening: false }); }; r.onerror = () => update({ feedback: 'Speech recognition error. Try again.', isListening: false }); update({ recognition: r }); } }, [s.localTerm?.term]);
   useEffect(() => { const handleClickOutside = (e) => { if (s.tagDropdownOpen && !e.target.closest('.tag-dropdown')) { update({ tagDropdownOpen: false }); } }; document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [s.tagDropdownOpen]);
 
   const debouncedSave = useCallback(debounce(async (field, value) => { if (!s.selected) return; try { await glossaryService.updateTerm(s.selected.id, { [field]: value }); update({ terms: s.terms.map(t => t.id === s.selected.id ? {...t, [field]: value} : t), selected: {...s.selected, [field]: value} }); if (field === 'tags') { const allTags = [...new Set(s.terms.flatMap(term => term.tags || []))].sort(); update({ tags: allTags }); } } catch (err) { update({ error: 'Failed to save. Please try again.' }); } }, 500), [s.selected, s.terms]);
@@ -27,8 +26,6 @@ export default function GlossaryApp() {
     removeTag: (tagToRemove) => { const updatedTags = s.localTerm.tags?.filter(tag => tag !== tagToRemove) || []; update({ localTerm: { ...s.localTerm, tags: updatedTags } }); debouncedSave('tags', updatedTags); },
     speak: async () => { if (!s.elevenLabsKey || !s.localTerm?.term) return; update({ isGeneratingAudio: true }); try { const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', { method: 'POST', headers: { 'Accept': 'audio/mpeg', 'Content-Type': 'application/json', 'xi-api-key': s.elevenLabsKey }, body: JSON.stringify({ text: s.localTerm.term, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.5 } }) }); if (response.ok) { const audio = new Audio(); audio.src = URL.createObjectURL(await response.blob()); audio.play(); } } catch (error) { console.error('ElevenLabs error:', error); } finally { update({ isGeneratingAudio: false }); } },
     speakFallback: () => { if ('speechSynthesis' in window && s.localTerm?.term) { const utterance = new SpeechSynthesisUtterance(s.localTerm.term); utterance.lang = 'en-AU'; speechSynthesis.speak(utterance); } },
-    startListening: () => { if (s.recognition) { update({ feedback: '', isListening: true }); s.recognition.start(); } },
-    stopListening: () => { if (s.recognition) { s.recognition.stop(); update({ isListening: false }); } },
     importTerms: async () => { try { update({ importStatus: 'Importing...' }); const terms = JSON.parse(s.importJson); let success = 0; for (const term of terms) { await glossaryService.addTerm(term); success++; } update({ importStatus: `✅ Imported ${success} terms successfully!`, importJson: '' }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Import failed: ${err.message}` }); } },
     cleanupBlankEntries: async () => { try { update({ importStatus: 'Cleaning up blank entries...' }); const blankTerms = s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled'); let deleted = 0; for (const term of blankTerms) { await glossaryService.deleteTerm(term.id); deleted++; } update({ importStatus: `✅ Cleaned up ${deleted} blank entries!` }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Cleanup failed: ${err.message}` }); } }
   };
@@ -81,9 +78,16 @@ export default function GlossaryApp() {
         </div>
         <Textarea placeholder="Paste your JSON array here..." value={s.importJson} onChange={(e) => update({ importJson: e.target.value })} className="w-full min-h-60 text-sm font-mono" rows={15} />
         {s.importStatus && <div className={`text-sm p-3 rounded ${s.importStatus.includes('✅') ? 'bg-green-100 text-green-700' : s.importStatus.includes('❌') ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{s.importStatus}</div>}
-        <div className="space-y-2">
-          <Button className="w-full h-12" onClick={h.importTerms} disabled={!s.importJson.trim()}>Import Terms</Button>
-          <Button className="w-full h-12" variant="destructive" onClick={h.cleanupBlankEntries} disabled={s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length === 0}>🧹 Clean Blank Entries ({s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length})</Button>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">ElevenLabs API Key (Optional)</label>
+            <Input placeholder="Enter your ElevenLabs API key for Australian voice" value={s.elevenLabsKey} onChange={(e) => { update({ elevenLabsKey: e.target.value }); localStorage.setItem('elevenLabsKey', e.target.value); }} className="w-full" />
+            <p className="text-xs text-muted-foreground">Get your free API key from elevenlabs.io for natural Australian pronunciation</p>
+          </div>
+          <div className="space-y-2">
+            <Button className="w-full h-12" onClick={h.importTerms} disabled={!s.importJson.trim()}>Import Terms</Button>
+            <Button className="w-full h-12" variant="destructive" onClick={h.cleanupBlankEntries} disabled={s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length === 0}>🧹 Clean Blank Entries ({s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length})</Button>
+          </div>
         </div>
       </div></ScrollArea>
       <div className="p-2 text-center">
@@ -96,8 +100,15 @@ export default function GlossaryApp() {
       </div>
       <ScrollArea className="flex-1"><div className="p-4 space-y-4">
         <div className="space-y-2">
-          <Input placeholder="Term" value={s.localTerm?.term || ''} onChange={(e) => h.inputChange('term', e.target.value)} className="w-full h-12 text-lg font-medium" />
-          {s.localTerm?.term && <div className="bg-muted border border-border rounded-lg p-3 space-y-3"><div className="flex items-center justify-between"><span className="text-sm font-medium text-foreground">Practice Pronunciation</span><div className="flex gap-2"><Button size="sm" variant="outline" onClick={s.elevenLabsKey ? h.speak : h.speakFallback} disabled={s.isGeneratingAudio}><Volume2 className="h-3 w-3 mr-1" />{s.isGeneratingAudio ? 'Loading...' : s.elevenLabsKey ? 'Listen (AusE)' : 'Listen'}</Button><Button size="sm" variant={s.isListening ? "destructive" : "default"} onClick={s.isListening ? h.stopListening : h.startListening}>{s.isListening ? <MicOff className="h-3 w-3 mr-1" /> : <Mic className="h-3 w-3 mr-1" />}{s.isListening ? 'Stop' : 'Practice'}</Button></div></div>{s.feedback && <div className={`text-sm p-2 rounded ${s.feedback.includes('Perfect') ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{s.feedback}</div>}{s.isListening && <div className="text-sm text-muted-foreground italic">🎤 Listening... Say "{s.localTerm.term}"</div>}</div>}
+          <div className="flex gap-2">
+            <Input placeholder="Term" value={s.localTerm?.term || ''} onChange={(e) => h.inputChange('term', e.target.value)} className="flex-1 h-12 text-lg font-medium" />
+            {s.localTerm?.term && (
+              <Button size="sm" variant="outline" onClick={s.elevenLabsKey ? h.speak : h.speakFallback} disabled={s.isGeneratingAudio} className="h-12 px-3">
+                <Volume2 className="h-4 w-4 mr-1" />
+                {s.isGeneratingAudio ? 'Loading...' : s.elevenLabsKey ? 'Listen (AusE)' : 'Listen'}
+              </Button>
+            )}
+          </div>
         </div>
         <Input placeholder="IPA" value={s.localTerm?.ipa || ''} onChange={(e) => h.inputChange('ipa', e.target.value)} className="w-full h-12 text-base font-mono" />
         <Input placeholder="Mandarin" value={s.localTerm?.mandarin || ''} onChange={(e) => h.inputChange('mandarin', e.target.value)} className="w-full h-12 text-base" />
