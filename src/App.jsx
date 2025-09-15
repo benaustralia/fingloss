@@ -6,615 +6,89 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Search, ArrowLeft, Volume2, Mic, MicOff, Tag, X } from 'lucide-react';
 import { glossaryService } from '@/lib/glossaryService';
 
-// Simple debounce function
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-const ListView = ({ terms, search, onSearch, onSelect, onAdd, tags, selectedTag, onTagSelect }) => (
-  <div className="flex flex-col h-screen w-full">
-    {/* Fixed header */}
-    <div className="flex-none p-4 border-b border-gray-200 bg-white space-y-3">
-      <div className="relative max-w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-600" />
-        <Input 
-          placeholder="Search terms..." 
-          value={search}
-          onChange={onSearch}
-          className="w-full pl-10 h-12 text-base bg-white border-gray-300 text-gray-900 placeholder-gray-600"
-          onKeyDown={(e) => e.key === 'Enter' && search && !terms.length && onAdd(search)}
-        />
-      </div>
-      
-      {/* Tags filter */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={selectedTag === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => onTagSelect('all')}
-            className="text-xs"
-          >
-            All
-          </Button>
-          {tags.map(tag => (
-            <Button
-              key={tag}
-              variant={selectedTag === tag ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onTagSelect(tag)}
-              className="text-xs"
-            >
-              <Tag className="h-3 w-3 mr-1" />
-              {tag}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
-
-    {/* Scrollable content */}
-    <ScrollArea className="flex-1">
-      <div className="divide-y divide-gray-200">
-        {terms.map(term => (
-          <div 
-            key={term.id}
-            className="p-4 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
-            onClick={() => onSelect(term)}
-          >
-            <div className="font-medium text-base mb-1 text-gray-900 break-words">
-              {term.term || "Untitled"}
-            </div>
-            <div className="text-sm text-gray-700 line-clamp-2 break-words mb-2">
-              {term.definition || "Tap to add definition"}
-            </div>
-            {term.tags && term.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {term.tags.map(tag => (
-                  <span 
-                    key={tag}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
-                  >
-                    <Tag className="h-2 w-2 mr-1" />
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-        {terms.length === 0 && (
-          <div className="p-8 text-center text-gray-600">
-            {search ? 'No matches - press Enter to create' : 'No terms yet'}
-          </div>
-        )}
-      </div>
-    </ScrollArea>
-
-    {/* Fixed add button */}
-    <div className="flex-none p-4">
-      <Button 
-        className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium" 
-        onClick={() => onAdd()}
-      >
-        <Plus className="h-4 w-4 mr-2" />
-        Add Term
-      </Button>
-    </div>
-  </div>
-);
-
-const DetailView = ({ term, onBack, onChange, elevenLabsKey, setElevenLabsKey, isListening, setIsListening, feedback, setFeedback, isGeneratingAudio, setIsGeneratingAudio, onDelete }) => {
-  const [recognition, setRecognition] = useState(null);
-  const [newTag, setNewTag] = useState('');
-  const [localTerm, setLocalTerm] = useState(term);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Sync local state with prop changes
-  useEffect(() => {
-    setLocalTerm(term);
-  }, [term]);
-
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = false;
-      recognitionInstance.interimResults = false;
-      recognitionInstance.lang = 'en-AU';
-      
-      recognitionInstance.onresult = (event) => {
-        const spoken = event.results[0][0].transcript.toLowerCase().trim();
-        const target = localTerm?.term?.toLowerCase().trim();
-        
-        if (spoken === target) {
-          setFeedback('Perfect! 🎉');
-        } else if (spoken.includes(target) || target.includes(spoken)) {
-          setFeedback('Close! Try again.');
-        } else {
-          setFeedback(`You said "${spoken}" - try saying "${localTerm?.term}"`);
-        }
-        setIsListening(false);
-      };
-      
-      recognitionInstance.onerror = () => {
-        setFeedback('Speech recognition error. Try again.');
-        setIsListening(false);
-      };
-      
-      setRecognition(recognitionInstance);
-    }
-  }, [localTerm?.term, setFeedback, setIsListening]);
-
-  const startListening = () => {
-    if (recognition) {
-      setFeedback('');
-      setIsListening(true);
-      recognition.start();
-    }
-  };
-
-  const stopListening = () => {
-    if (recognition) {
-      recognition.stop();
-      setIsListening(false);
-    }
-  };
-
-  const speakWithElevenLabs = async () => {
-    if (!elevenLabsKey || !localTerm?.term) return;
-    
-    setIsGeneratingAudio(true);
-    try {
-      const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', {
-        method: 'POST',
-        headers: {
-          'Accept': 'audio/mpeg',
-          'Content-Type': 'application/json',
-          'xi-api-key': elevenLabsKey
-        },
-        body: JSON.stringify({
-          text: localTerm.term,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.5
-          }
-        })
-      });
-      
-      if (response.ok) {
-        const audio = new Audio();
-        audio.src = URL.createObjectURL(await response.blob());
-        audio.play();
-      }
-    } catch (error) {
-      console.error('ElevenLabs error:', error);
-    } finally {
-      setIsGeneratingAudio(false);
-    }
-  };
-
-  const speakTermFallback = () => {
-    if ('speechSynthesis' in window && localTerm?.term) {
-      const utterance = new SpeechSynthesisUtterance(localTerm.term);
-      utterance.lang = 'en-AU';
-      speechSynthesis.speak(utterance);
-    }
-  };
-
-  const saveElevenLabsKey = (key) => {
-    setElevenLabsKey(key);
-    localStorage.setItem('elevenLabsKey', key);
-  };
-
-  // Debounced save function
-  const debouncedSave = useCallback(
-    debounce(async (field, value) => {
-      if (isSaving) return;
-      setIsSaving(true);
-      try {
-        await onChange(field, value);
-      } catch (error) {
-        console.error('Error saving:', error);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 500),
-    [onChange, isSaving]
-  );
-
-  // Handle input changes with local state
-  const handleInputChange = (field, value) => {
-    setLocalTerm(prev => ({ ...prev, [field]: value }));
-    debouncedSave(field, value);
-  };
-
-  const addTag = () => {
-    if (newTag.trim() && !localTerm.tags?.includes(newTag.trim())) {
-      const updatedTags = [...(localTerm.tags || []), newTag.trim()];
-      setLocalTerm(prev => ({ ...prev, tags: updatedTags }));
-      onChange('tags', updatedTags);
-      setNewTag('');
-    }
-  };
-
-  const removeTag = (tagToRemove) => {
-    const updatedTags = localTerm.tags?.filter(tag => tag !== tagToRemove) || [];
-    setLocalTerm(prev => ({ ...prev, tags: updatedTags }));
-    onChange('tags', updatedTags);
-  };
-
-  const handleDelete = () => {
-    if (confirm('Delete this term?')) {
-      onDelete(term.id);
-      onBack();
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-screen w-full">
-      {/* Fixed header */}
-      <div className="flex-none p-4 border-b border-gray-200 bg-white flex justify-between items-center">
-        <Button 
-          variant="ghost" 
-          className="h-12 px-4 text-base text-gray-900 hover:bg-gray-100" 
-          onClick={onBack}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="text-red-700 border-red-300 hover:bg-red-50 hover:border-red-400"
-          onClick={handleDelete}
-        >
-          Delete
-        </Button>
-      </div>
-
-      {/* Scrollable content */}
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
-          <div className="space-y-2">
-            <Input 
-              placeholder="Term name..."
-              value={localTerm?.term || ''}
-              onChange={(e) => handleInputChange('term', e.target.value)}
-              className="w-full h-12 text-lg font-medium bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
-            />
-            
-            {/* API Key Input */}
-            {!elevenLabsKey && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <div className="text-sm font-medium text-yellow-800 mb-2">Add ElevenLabs API Key for Natural Australian Voice</div>
-                <div className="flex gap-2">
-                  <Input 
-                    placeholder="sk-..."
-                    type="password"
-                    onChange={(e) => saveElevenLabsKey(e.target.value)}
-                    className="flex-1 text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.open('https://elevenlabs.io/app/settings/api-keys', '_blank')}
-                    className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
-                  >
-                    Get Key
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Pronunciation Practice Section */}
-            {localTerm?.term && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-blue-800">Practice Pronunciation</span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={elevenLabsKey ? speakWithElevenLabs : speakTermFallback}
-                      disabled={isGeneratingAudio}
-                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
-                    >
-                      <Volume2 className="h-3 w-3 mr-1" />
-                      {isGeneratingAudio ? 'Loading...' : elevenLabsKey ? 'Listen (AusE)' : 'Listen'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={isListening ? "destructive" : "default"}
-                      onClick={isListening ? stopListening : startListening}
-                      className={isListening ? "" : "bg-blue-600 hover:bg-blue-700"}
-                    >
-                      {isListening ? <MicOff className="h-3 w-3 mr-1" /> : <Mic className="h-3 w-3 mr-1" />}
-                      {isListening ? 'Stop' : 'Practice'}
-                    </Button>
-                  </div>
-                </div>
-                {feedback && (
-                  <div className={`text-sm p-2 rounded ${feedback.includes('Perfect') ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                    {feedback}
-                  </div>
-                )}
-                {isListening && (
-                  <div className="text-sm text-blue-600 italic">
-                    🎤 Listening... Say "{localTerm.term}"
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <Input 
-            placeholder="IPA pronunciation (e.g., /ˌeɪ piː ˈaɪ/)..."
-            value={localTerm?.ipa || ''}
-            onChange={(e) => handleInputChange('ipa', e.target.value)}
-            className="w-full h-12 text-base font-mono bg-white border-gray-300 text-blue-600 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500"
-          />
-          <Input 
-            placeholder="Mandarin translation..."
-            value={localTerm?.mandarin || ''}
-            onChange={(e) => handleInputChange('mandarin', e.target.value)}
-            className="w-full h-12 text-base bg-white border-gray-300 text-green-700 placeholder-gray-500 focus:border-green-500 focus:ring-green-500"
-          />
-          <Textarea 
-            placeholder="Add definition..."
-            value={localTerm?.definition || ''}
-            onChange={(e) => handleInputChange('definition', e.target.value)}
-            className="w-full min-h-40 text-base resize-none bg-white border-gray-300 text-gray-900 placeholder-gray-600 focus:border-blue-500 focus:ring-blue-500"
-            rows={10}
-          />
-
-          {/* Tags Section */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-gray-700">Tags</label>
-            
-            {/* Current tags */}
-            {localTerm?.tags && localTerm.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {localTerm.tags.map(tag => (
-                  <span 
-                    key={tag}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
-                  >
-                    <Tag className="h-3 w-3 mr-1" />
-                    {tag}
-                    <button
-                      onClick={() => removeTag(tag)}
-                      className="ml-2 hover:text-blue-600"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Add new tag */}
-            <div className="flex gap-2">
-              <Input 
-                placeholder="Add a tag..."
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addTag()}
-                className="flex-1 text-sm"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={addTag}
-                disabled={!newTag.trim()}
-                className="text-blue-700 border-blue-300 hover:bg-blue-100"
-              >
-                <Tag className="h-3 w-3 mr-1" />
-                Add
-              </Button>
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
-    </div>
-  );
-};
+const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
 
 export default function GlossaryApp() {
-  const [terms, setTerms] = useState([]);
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(null);
-  const [view, setView] = useState('list');
-  const [isListening, setIsListening] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-  const [elevenLabsKey, setElevenLabsKey] = useState(localStorage.getItem('elevenLabsKey') || '');
-  const [tags, setTags] = useState([]);
-  const [selectedTag, setSelectedTag] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', isListening: false, feedback: '', isGeneratingAudio: false, elevenLabsKey: localStorage.getItem('elevenLabsKey') || '', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', recognition: null, importJson: '', importStatus: '' });
+  const update = (u) => setS(p => ({ ...p, ...u }));
 
-  // Load terms from Firebase
-  useEffect(() => {
-    loadTerms();
-    loadTags();
-  }, []);
+  useEffect(() => { (async () => { try { update({ loading: true }); const [allTerms, allTags] = await Promise.all([glossaryService.getAllTerms(), glossaryService.getAllTags()]); update({ terms: allTerms, tags: allTags, error: null, loading: false }); } catch (err) { update({ error: 'Failed to load data. Please check Firebase configuration.', loading: false }); } })(); }, []);
+  useEffect(() => { update({ localTerm: s.selected }); }, [s.selected]);
+  useEffect(() => { if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) { const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition; const r = new SpeechRecognition(); Object.assign(r, { continuous: false, interimResults: false, lang: 'en-AU' }); r.onresult = (e) => { const spoken = e.results[0][0].transcript.toLowerCase().trim(); const target = s.localTerm?.term?.toLowerCase().trim(); update({ feedback: spoken === target ? 'Perfect! 🎉' : spoken.includes(target) || target.includes(spoken) ? 'Close! Try again.' : `You said "${spoken}" - try saying "${s.localTerm?.term}"`, isListening: false }); }; r.onerror = () => update({ feedback: 'Speech recognition error. Try again.', isListening: false }); update({ recognition: r }); } }, [s.localTerm?.term]);
 
-  const loadTerms = async () => {
-    try {
-      setLoading(true);
-      const allTerms = await glossaryService.getAllTerms();
-      setTerms(allTerms);
-      setError(null);
-    } catch (err) {
-      console.error('Error loading terms:', err);
-      setError('Failed to load terms. Please check your Firebase configuration.');
-    } finally {
-      setLoading(false);
-    }
+  const debouncedSave = useCallback(debounce(async (field, value) => { if (!s.selected) return; try { await glossaryService.updateTerm(s.selected.id, { [field]: value }); update({ terms: s.terms.map(t => t.id === s.selected.id ? {...t, [field]: value} : t), selected: {...s.selected, [field]: value} }); if (field === 'tags') { const allTags = await glossaryService.getAllTags(); update({ tags: allTags }); } } catch (err) { update({ error: 'Failed to save. Please try again.' }); } }, 500), [s.selected, s.terms]);
+
+  const h = {
+    inputChange: (field, value) => { update({ localTerm: { ...s.localTerm, [field]: value } }); debouncedSave(field, value); },
+    add: async (searchTerm = '') => { try { const termData = { term: searchTerm, definition: "", ipa: "", mandarin: "", tags: [] }; const termId = await glossaryService.addTerm(termData); const newTerm = { id: termId, ...termData }; update({ terms: [newTerm, ...s.terms], selected: newTerm, view: 'detail', search: searchTerm ? '' : s.search }); } catch (err) { update({ error: 'Failed to add term. Please try again.' }); } },
+    delete: async (termId) => { try { await glossaryService.deleteTerm(termId); const allTags = await glossaryService.getAllTags(); update({ terms: s.terms.filter(t => t.id !== termId), tags: allTags }); } catch (err) { update({ error: 'Failed to delete term. Please try again.' }); } },
+    addTag: () => { if (s.newTag.trim() && !s.localTerm.tags?.includes(s.newTag.trim())) { const updatedTags = [...(s.localTerm.tags || []), s.newTag.trim()]; update({ localTerm: { ...s.localTerm, tags: updatedTags }, newTag: '' }); debouncedSave('tags', updatedTags); } },
+    removeTag: (tagToRemove) => { const updatedTags = s.localTerm.tags?.filter(tag => tag !== tagToRemove) || []; update({ localTerm: { ...s.localTerm, tags: updatedTags } }); debouncedSave('tags', updatedTags); },
+    speak: async () => { if (!s.elevenLabsKey || !s.localTerm?.term) return; update({ isGeneratingAudio: true }); try { const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', { method: 'POST', headers: { 'Accept': 'audio/mpeg', 'Content-Type': 'application/json', 'xi-api-key': s.elevenLabsKey }, body: JSON.stringify({ text: s.localTerm.term, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.5 } }) }); if (response.ok) { const audio = new Audio(); audio.src = URL.createObjectURL(await response.blob()); audio.play(); } } catch (error) { console.error('ElevenLabs error:', error); } finally { update({ isGeneratingAudio: false }); } },
+    speakFallback: () => { if ('speechSynthesis' in window && s.localTerm?.term) { const utterance = new SpeechSynthesisUtterance(s.localTerm.term); utterance.lang = 'en-AU'; speechSynthesis.speak(utterance); } },
+    startListening: () => { if (s.recognition) { update({ feedback: '', isListening: true }); s.recognition.start(); } },
+    stopListening: () => { if (s.recognition) { s.recognition.stop(); update({ isListening: false }); } },
+    importTerms: async () => { try { update({ importStatus: 'Importing...' }); const terms = JSON.parse(s.importJson); let success = 0; for (const term of terms) { await glossaryService.addTerm(term); success++; } update({ importStatus: `✅ Imported ${success} terms successfully!`, importJson: '' }); const [allTerms, allTags] = await Promise.all([glossaryService.getAllTerms(), glossaryService.getAllTags()]); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Import failed: ${err.message}` }); } },
+    cleanupBlankEntries: async () => { try { update({ importStatus: 'Cleaning up blank entries...' }); const blankTerms = s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled'); let deleted = 0; for (const term of blankTerms) { await glossaryService.deleteTerm(term.id); deleted++; } update({ importStatus: `✅ Cleaned up ${deleted} blank entries!` }); const [allTerms, allTags] = await Promise.all([glossaryService.getAllTerms(), glossaryService.getAllTags()]); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Cleanup failed: ${err.message}` }); } }
   };
 
-  const loadTags = async () => {
-    try {
-      const allTags = await glossaryService.getAllTags();
-      setTags(allTags);
-    } catch (err) {
-      console.error('Error loading tags:', err);
-    }
-  };
+  const getFilteredTerms = () => { let filtered = s.terms; if (s.selectedTag !== 'all') filtered = filtered.filter(term => term.tags?.includes(s.selectedTag)); if (s.search) filtered = filtered.filter(term => term.term.toLowerCase().includes(s.search.toLowerCase()) || term.definition.toLowerCase().includes(s.search.toLowerCase()) || term.mandarin?.toLowerCase().includes(s.search.toLowerCase()) || term.tags?.some(tag => tag.toLowerCase().includes(s.search.toLowerCase()))); return filtered; };
 
-  const getFilteredTerms = () => {
-    let filtered = terms;
+  if (s.loading) return <div className="w-full max-w-md mx-auto min-h-screen bg-background flex items-center justify-center"><div className="text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div><p className="text-muted-foreground">Loading glossary...</p></div></div>;
+  if (s.error) return <div className="w-full max-w-md mx-auto min-h-screen bg-background flex items-center justify-center p-4"><div className="text-center"><div className="text-destructive mb-4">⚠️</div><p className="text-destructive mb-4">{s.error}</p><Button onClick={() => window.location.reload()}>Try Again</Button></div></div>;
 
-    // Filter by tag
-    if (selectedTag !== 'all') {
-      filtered = filtered.filter(term => term.tags?.includes(selectedTag));
-    }
-
-    // Filter by search
-    if (search) {
-      filtered = filtered.filter(term => 
-        term.term.toLowerCase().includes(search.toLowerCase()) || 
-        term.definition.toLowerCase().includes(search.toLowerCase()) ||
-        term.mandarin?.toLowerCase().includes(search.toLowerCase()) ||
-        term.tags?.some(tag => tag.toLowerCase().includes(search.toLowerCase()))
-      );
-    }
-
-    return filtered;
-  };
-
-  const handleAdd = async (searchTerm = '') => {
-    try {
-      const termData = {
-        term: searchTerm,
-        definition: "",
-        ipa: "",
-        mandarin: "",
-        tags: []
-      };
-      
-      const termId = await glossaryService.addTerm(termData);
-      const newTerm = { id: termId, ...termData };
-      
-      setTerms([newTerm, ...terms]);
-      setSelected(newTerm);
-      setView('detail');
-      if (searchTerm) setSearch('');
-    } catch (err) {
-      console.error('Error adding term:', err);
-      setError('Failed to add term. Please try again.');
-    }
-  };
-
-  const handleSave = async (field, value) => {
-    if (!selected) return;
-    
-    try {
-      await glossaryService.updateTerm(selected.id, { [field]: value });
-      
-      const updated = terms.map(t => t.id === selected.id ? {...t, [field]: value} : t);
-      setTerms(updated);
-      setSelected({...selected, [field]: value});
-      
-      // Reload tags if we updated tags
-      if (field === 'tags') {
-        loadTags();
-      }
-    } catch (err) {
-      console.error('Error updating term:', err);
-      setError('Failed to update term. Please try again.');
-    }
-  };
-
-  const handleDelete = async (termId) => {
-    try {
-      await glossaryService.deleteTerm(termId);
-      setTerms(terms.filter(t => t.id !== termId));
-      loadTags(); // Reload tags in case this term had unique tags
-    } catch (err) {
-      console.error('Error deleting term:', err);
-      setError('Failed to delete term. Please try again.');
-    }
-  };
-
-  const handleBack = () => {
-    setView('list');
-    setSelected(null);
-  };
-
-  const handleSelect = (term) => {
-    setSelected(term);
-    setView('detail');
-  };
-
-  const handleTagSelect = (tag) => {
-    setSelectedTag(tag);
-  };
-
-  if (loading) {
-    return (
-      <div className="w-full max-w-md mx-auto min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading glossary...</p>
-        </div>
+  return <div className="w-full max-w-md mx-auto min-h-screen bg-background">
+    {s.view === 'list' ? <div className="flex flex-col h-screen w-full">
+      <div className="flex-none p-4 border-b border-border bg-background space-y-3">
+        <div className="relative max-w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search" value={s.search} onChange={(e) => update({ search: e.target.value })} className="w-full pl-10 h-12 text-base" onKeyDown={(e) => e.key === 'Enter' && s.search && !s.terms.length && h.add(s.search)} /></div>
+        {s.tags.length > 0 && <div className="flex flex-wrap gap-2"><Button variant={s.selectedTag === 'all' ? 'default' : 'outline'} size="sm" onClick={() => update({ selectedTag: 'all' })} className="text-xs">All</Button>{s.tags.map(tag => <Button key={tag} variant={s.selectedTag === tag ? 'default' : 'outline'} size="sm" onClick={() => update({ selectedTag: tag })} className="text-xs"><Tag className="h-3 w-3 mr-1" />{tag}</Button>)}</div>}
       </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full max-w-md mx-auto min-h-screen bg-white flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="text-red-600 mb-4">⚠️</div>
-          <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={loadTerms} className="bg-blue-600 hover:bg-blue-700">
-            Try Again
-          </Button>
-        </div>
+      <ScrollArea className="flex-1"><div className="divide-y divide-border">
+        {getFilteredTerms().map(term => <div key={term.id} className="p-4 hover:bg-accent active:bg-accent/80 cursor-pointer transition-colors" onClick={() => { update({ selected: term, view: 'detail' }); }}><div className="font-medium text-base mb-1 text-foreground break-words">{term.term || "Untitled"}</div><div className="text-sm text-muted-foreground line-clamp-2 break-words mb-2">{term.definition || "Tap to add definition"}</div>{term.tags && term.tags.length > 0 && <div className="flex flex-wrap gap-1">{term.tags.map(tag => <span key={tag} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary"><Tag className="h-2 w-2 mr-1" />{tag}</span>)}</div>}</div>)}
+        {s.terms.length === 0 && <div className="p-8 text-center text-muted-foreground">{s.search ? 'No matches - press Enter to create' : 'No terms yet'}</div>}
+      </div></ScrollArea>
+      <div className="flex-none p-4 space-y-2"><Button className="w-full h-12" onClick={() => h.add()}><Plus className="h-4 w-4 mr-2" />Add Term</Button><Button className="w-full h-12" variant="secondary" onClick={() => update({ view: 'import' })}>📥 Import Terms</Button></div>
+    </div> : s.view === 'import' ? <div className="flex flex-col h-screen w-full">
+      <div className="flex-none p-4 border-b border-border bg-background flex justify-between items-center">
+        <Button variant="ghost" className="h-12 px-4 text-base" onClick={() => update({ view: 'list' })}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
+        <span className="text-lg font-medium">Import Terms</span>
+        <div></div>
       </div>
-    );
+      <ScrollArea className="flex-1"><div className="p-4 space-y-4">
+        <div className="bg-muted border border-border rounded-lg p-4">
+          <h3 className="font-medium text-foreground mb-2">JSON Format</h3>
+          <pre className="text-xs text-muted-foreground bg-muted/50 p-2 rounded overflow-x-auto">{`[
+  {
+    "term": "Algorithm",
+    "definition": "Step-by-step procedure...",
+    "ipa": "/ˈælɡərɪðəm/",
+    "mandarin": "算法",
+    "tags": ["computer-science", "programming"]
   }
-
-  return (
-    <div className="w-full max-w-md mx-auto min-h-screen bg-white">
-      {view === 'list' ? (
-        <ListView 
-          terms={getFilteredTerms()}
-          search={search}
-          onSearch={(e) => setSearch(e.target.value)}
-          onSelect={handleSelect}
-          onAdd={handleAdd}
-          tags={tags}
-          selectedTag={selectedTag}
-          onTagSelect={handleTagSelect}
-        />
-      ) : (
-        <DetailView 
-          term={selected}
-          onBack={handleBack}
-          onChange={handleSave}
-          onDelete={handleDelete}
-          elevenLabsKey={elevenLabsKey}
-          setElevenLabsKey={setElevenLabsKey}
-          isListening={isListening}
-          setIsListening={setIsListening}
-          feedback={feedback}
-          setFeedback={setFeedback}
-          isGeneratingAudio={isGeneratingAudio}
-          setIsGeneratingAudio={setIsGeneratingAudio}
-        />
-      )}
-    </div>
-  );
+]`}</pre>
+        </div>
+        <Textarea placeholder="Paste your JSON array here..." value={s.importJson} onChange={(e) => update({ importJson: e.target.value })} className="w-full min-h-60 text-sm font-mono" rows={15} />
+        {s.importStatus && <div className={`text-sm p-3 rounded ${s.importStatus.includes('✅') ? 'bg-green-100 text-green-700' : s.importStatus.includes('❌') ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{s.importStatus}</div>}
+        <div className="space-y-2">
+          <Button className="w-full h-12" onClick={h.importTerms} disabled={!s.importJson.trim()}>Import Terms</Button>
+          <Button className="w-full h-12" variant="destructive" onClick={h.cleanupBlankEntries} disabled={s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length === 0}>🧹 Clean Blank Entries ({s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length})</Button>
+        </div>
+      </div></ScrollArea>
+    </div> : <div className="flex flex-col h-screen w-full">
+      <div className="flex-none p-4 border-b border-border bg-background flex justify-between items-center">
+        <Button variant="ghost" className="h-12 px-4 text-base" onClick={() => update({ view: 'list', selected: null })}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
+        <Button variant="destructive" size="sm" onClick={() => { if (confirm('Delete this term?')) { h.delete(s.selected.id); update({ view: 'list', selected: null }); } }}>Delete</Button>
+      </div>
+      <ScrollArea className="flex-1"><div className="p-4 space-y-4">
+        <div className="space-y-2">
+          <Input placeholder="Term" value={s.localTerm?.term || ''} onChange={(e) => h.inputChange('term', e.target.value)} className="w-full h-12 text-lg font-medium" />
+          {s.localTerm?.term && <div className="bg-muted border border-border rounded-lg p-3 space-y-3"><div className="flex items-center justify-between"><span className="text-sm font-medium text-foreground">Practice Pronunciation</span><div className="flex gap-2"><Button size="sm" variant="outline" onClick={s.elevenLabsKey ? h.speak : h.speakFallback} disabled={s.isGeneratingAudio}><Volume2 className="h-3 w-3 mr-1" />{s.isGeneratingAudio ? 'Loading...' : s.elevenLabsKey ? 'Listen (AusE)' : 'Listen'}</Button><Button size="sm" variant={s.isListening ? "destructive" : "default"} onClick={s.isListening ? h.stopListening : h.startListening}>{s.isListening ? <MicOff className="h-3 w-3 mr-1" /> : <Mic className="h-3 w-3 mr-1" />}{s.isListening ? 'Stop' : 'Practice'}</Button></div></div>{s.feedback && <div className={`text-sm p-2 rounded ${s.feedback.includes('Perfect') ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{s.feedback}</div>}{s.isListening && <div className="text-sm text-muted-foreground italic">🎤 Listening... Say "{s.localTerm.term}"</div>}</div>}
+        </div>
+        <Input placeholder="IPA" value={s.localTerm?.ipa || ''} onChange={(e) => h.inputChange('ipa', e.target.value)} className="w-full h-12 text-base font-mono" />
+        <Input placeholder="Mandarin" value={s.localTerm?.mandarin || ''} onChange={(e) => h.inputChange('mandarin', e.target.value)} className="w-full h-12 text-base" />
+        <Textarea placeholder="Definition" value={s.localTerm?.definition || ''} onChange={(e) => h.inputChange('definition', e.target.value)} className="w-full min-h-40 text-base resize-none" rows={10} />
+        <div className="space-y-3">{s.localTerm?.tags && s.localTerm.tags.length > 0 && <div className="flex flex-wrap gap-2">{s.localTerm.tags.map(tag => <span key={tag} className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary/10 text-primary"><Tag className="h-3 w-3 mr-1" />{tag}<button onClick={() => h.removeTag(tag)} className="ml-2 hover:text-primary/80"><X className="h-3 w-3" /></button></span>)}</div>}<div className="flex gap-2"><Input placeholder="Tag" value={s.newTag} onChange={(e) => update({ newTag: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && h.addTag()} className="flex-1 text-sm" /><Button size="sm" variant="outline" onClick={h.addTag} disabled={!s.newTag.trim()}><Tag className="h-3 w-3 mr-1" />Add</Button></div></div>
+      </div></ScrollArea>
+    </div>}
+  </div>;
 }
