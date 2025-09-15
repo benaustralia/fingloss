@@ -10,6 +10,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
+      - VITE_ELEVENLABS_API_KEY=${VITE_ELEVENLABS_API_KEY}
     stdin_open: true
     tty: true
     command: npm run start
