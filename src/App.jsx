@@ -65,6 +65,9 @@ export default function GlossaryApp() {
           <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none"></div>
         </div>
         <div className="flex-none p-4"><div className="flex gap-2"><Button className="flex-1 h-12" onClick={() => h.add()}><Plus className="h-4 w-4 mr-2" />Add Term</Button><Button className="flex-1 h-12" variant="outline" onClick={() => update({ view: 'import' })}>📥 Import</Button></div></div>
+        <div className="p-2 text-center">
+          <p className="text-xs text-muted-foreground">Version 1</p>
+        </div>
       </div> : s.view === 'import' ? <div className="flex flex-col h-screen w-full">
       <div className="flex-none p-4 border-b border-border bg-background flex justify-between items-center">
         <Button variant="ghost" className="h-12 px-4 text-base" onClick={() => update({ view: 'list' })}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
@@ -83,6 +86,9 @@ export default function GlossaryApp() {
           <Button className="w-full h-12" variant="destructive" onClick={h.cleanupBlankEntries} disabled={s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length === 0}>🧹 Clean Blank Entries ({s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled').length})</Button>
         </div>
       </div></ScrollArea>
+      <div className="p-2 text-center">
+        <p className="text-xs text-muted-foreground">Version 1</p>
+      </div>
     </div> : <div className="flex flex-col h-screen w-full">
       <div className="flex-none p-4 border-b border-border bg-background flex justify-between items-center">
         <Button variant="ghost" className="h-12 px-4 text-base" onClick={() => update({ view: 'list', selected: null })}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
@@ -98,9 +104,9 @@ export default function GlossaryApp() {
         <Textarea placeholder="Definition" value={s.localTerm?.definition || ''} onChange={(e) => h.inputChange('definition', e.target.value)} className="w-full min-h-40 text-base resize-none" rows={10} />
         <div className="space-y-3">{s.localTerm?.tags && s.localTerm.tags.length > 0 && <div className="flex flex-wrap gap-2">{s.localTerm.tags.map(tag => <span key={tag} className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary/10 text-primary"><Tag className="h-3 w-3 mr-1" />{tag}<button onClick={() => h.removeTag(tag)} className="ml-2 hover:text-primary/80"><X className="h-3 w-3" /></button></span>)}</div>}<div className="flex gap-2"><Input placeholder="Tag" value={s.newTag} onChange={(e) => update({ newTag: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && h.addTag()} className="flex-1 text-sm" /><Button size="sm" variant="outline" onClick={h.addTag} disabled={!s.newTag.trim()}><Tag className="h-3 w-3 mr-1" />Add</Button></div></div>
       </div></ScrollArea>
+      <div className="p-2 text-center">
+        <p className="text-xs text-muted-foreground">Version 1</p>
+      </div>
     </div>}
-    <div className="mt-auto p-4 text-center">
-      <p className="text-xs text-muted-foreground">Version 1</p>
-    </div>
   </div>;
 }
