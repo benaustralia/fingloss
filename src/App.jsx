@@ -1,26 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2, Mic, MicOff } from 'lucide-react';
+import { PronunciationPractice } from '@/components/ui/pronunciation-practice';
+import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2 } from 'lucide-react';
 import { glossaryService } from '@/lib/glossaryService';
-import AudioRecorder from './lib/audioRecorder';
 
 const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
 const APP_VERSION = "Version 5";
 
 export default function GlossaryApp() {
-  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, isGeneratingAudio: false, isRecording: false, pronunciationScore: null, pronunciationFeedback: '', volume: 0 });
-  const websocketRef = useRef(null);
-  const audioRecorderRef = useRef(null);
+  const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, isGeneratingAudio: false });
   const update = (u) => setS(p => ({ ...p, ...u }));
   useEffect(() => { (async () => { try { update({ loading: true }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags, error: null, loading: false }); } catch (err) { update({ error: 'Failed to load data. Please check Firebase configuration.', loading: false }); } })(); }, []);
   useEffect(() => { update({ localTerm: s.selected }); }, [s.selected]);
   useEffect(() => { const handleClickOutside = (e) => { if (s.tagDropdownOpen && !e.target.closest('.tag-dropdown')) { update({ tagDropdownOpen: false }); } }; document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, [s.tagDropdownOpen]);
-  
-  // Initialize WebSocket connection for pronunciation practice
-  useEffect(() => { if (s.view === 'detail' && s.selected) { try { websocketRef.current = new WebSocket('wss://ispikit.com:9999'); websocketRef.current.onopen = () => { console.log('Pronunciation service connected'); update({ pronunciationFeedback: 'Pronunciation service ready!' }); }; websocketRef.current.onmessage = (event) => { const message = JSON.parse(event.data); if (message.score) { update({ pronunciationScore: message.score, pronunciationFeedback: message.words || '' }); } else if (message.error) { update({ pronunciationFeedback: `Error: ${message.error}` }); } }; websocketRef.current.onerror = (error) => { console.error('WebSocket error:', error); update({ pronunciationFeedback: 'Pronunciation service unavailable. Please try again later.' }); }; websocketRef.current.onclose = () => { console.log('WebSocket connection closed'); }; } catch (error) { console.error('Failed to create WebSocket:', error); update({ pronunciationFeedback: 'Pronunciation service unavailable.' }); } return () => { if (websocketRef.current) { websocketRef.current.close(); websocketRef.current = null; } }; } }, [s.view, s.selected]);
 
   const debouncedSave = useCallback(debounce(async (field, value) => { if (!s.selected) return; try { await glossaryService.updateTerm(s.selected.id, { [field]: value }); update({ terms: s.terms.map(t => t.id === s.selected.id ? {...t, [field]: value} : t), selected: {...s.selected, [field]: value} }); if (field === 'tags') { const allTags = [...new Set(s.terms.flatMap(term => term.tags || []))].sort(); update({ tags: allTags }); } } catch (err) { update({ error: 'Failed to save. Please try again.' }); } }, 500), [s.selected, s.terms]);
 
@@ -31,8 +26,7 @@ export default function GlossaryApp() {
     addTag: () => { if (s.newTag.trim() && !s.localTerm.tags?.includes(s.newTag.trim())) { const updatedTags = [...(s.localTerm.tags || []), s.newTag.trim()]; update({ localTerm: { ...s.localTerm, tags: updatedTags }, newTag: '' }); debouncedSave('tags', updatedTags); } },
     removeTag: (tagToRemove) => { const updatedTags = s.localTerm.tags?.filter(tag => tag !== tagToRemove) || []; update({ localTerm: { ...s.localTerm, tags: updatedTags } }); debouncedSave('tags', updatedTags); },
     speak: async () => { if (!s.localTerm?.term || s.isGeneratingAudio) return; const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY; console.log('ElevenLabs API Key:', apiKey ? 'Found' : 'Missing'); if (!apiKey) { console.error('No ElevenLabs API key found. Set VITE_ELEVENLABS_API_KEY in .env.local'); return; } update({ isGeneratingAudio: true }); try { console.log('Making ElevenLabs request for:', s.localTerm.term); const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/IKne3meq5aSn9XLyUdCD', { method: 'POST', headers: { 'Accept': 'audio/mpeg', 'Content-Type': 'application/json', 'xi-api-key': apiKey }, body: JSON.stringify({ text: s.localTerm.term, model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.3, similarity_boost: 0.3, style: 0.2, use_speaker_boost: true } }) }); console.log('ElevenLabs response status:', response.status); if (response.ok) { const audioBlob = await response.blob(); const audio = new Audio(); audio.preload = 'auto'; audio.crossOrigin = 'anonymous'; audio.src = URL.createObjectURL(audioBlob); audio.onloadeddata = () => { console.log('Audio playing...'); audio.play(); update({ isGeneratingAudio: false }); }; audio.onerror = (e) => { console.error('Audio playback error:', e); update({ isGeneratingAudio: false }); }; } else { console.error('ElevenLabs API error:', response.status, response.statusText); update({ isGeneratingAudio: false }); } } catch (error) { console.error('ElevenLabs error:', error); update({ isGeneratingAudio: false }); } },
-    startRecording: async () => { if (!s.localTerm?.term || s.isRecording) return; try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const audioContext = new (window.AudioContext || window.webkitAudioContext)(); const input = audioContext.createMediaStreamSource(stream); if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) { audioRecorderRef.current = new AudioRecorder(input, websocketRef.current, {}, (data) => { if (data.volume) update({ volume: data.volume }); if (data.audio) console.log('Recording complete'); }); audioRecorderRef.current.start([s.localTerm.term]); } else { console.log('Using fallback speech recognition'); const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)(); recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US'; recognition.onresult = (event) => { const transcript = event.results[0][0].transcript.toLowerCase().trim(); const target = s.localTerm.term.toLowerCase().trim(); const similarity = transcript.includes(target) || target.includes(transcript) ? 85 : 45; update({ pronunciationScore: similarity, pronunciationFeedback: `You said: "${transcript}". Target: "${s.localTerm.term}"` }); }; recognition.onerror = (event) => { update({ pronunciationFeedback: `Speech recognition error: ${event.error}` }); }; recognition.start(); } update({ isRecording: true, pronunciationScore: null, pronunciationFeedback: '' }); } catch (error) { console.error('Recording error:', error); update({ pronunciationFeedback: error.name === 'NotAllowedError' ? 'Microphone access denied. Please allow microphone access and try again.' : 'Recording failed. Please try again.' }); } },
-    stopRecording: () => { if (!s.isRecording) return; if (audioRecorderRef.current) { audioRecorderRef.current.stop(); } update({ isRecording: false }); },
+    onPronunciationScore: (score, transcript) => { console.log('Pronunciation score:', score, 'Transcript:', transcript); },
     importTerms: async () => { try { update({ importStatus: 'Importing...' }); const terms = JSON.parse(s.importJson); let success = 0; for (const term of terms) { await glossaryService.addTerm(term); success++; } update({ importStatus: `✅ Imported ${success} terms successfully!`, importJson: '' }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Import failed: ${err.message}` }); } },
     cleanupBlankEntries: async () => { try { update({ importStatus: 'Cleaning up blank entries...' }); const blankTerms = s.terms.filter(term => !term.term || term.term.trim() === '' || term.term === 'Untitled'); let deleted = 0; for (const term of blankTerms) { await glossaryService.deleteTerm(term.id); deleted++; } update({ importStatus: `✅ Cleaned up ${deleted} blank entries!` }); const allTerms = await glossaryService.getAllTerms(); const allTags = [...new Set(allTerms.flatMap(term => term.tags || []))].sort(); update({ terms: allTerms, tags: allTags }); } catch (err) { update({ importStatus: `❌ Cleanup failed: ${err.message}` }); } }
   };
@@ -110,78 +104,10 @@ export default function GlossaryApp() {
             )}
           </div>
           {s.localTerm?.term && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                  <Mic className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h3 className="font-semibold text-blue-900 dark:text-blue-100">Practice Pronunciation</h3>
-              </div>
-              
-              <div className="text-center space-y-3">
-                <p className="text-sm text-blue-700 dark:text-blue-300">Say the word clearly and get instant feedback</p>
-                
-                {!s.isRecording ? (
-                  <Button onClick={h.startRecording} className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg">
-                    <Mic className="h-5 w-5 mr-2" />
-                    Start Speaking
-                  </Button>
-                ) : (
-                  <div className="space-y-3">
-                    <Button onClick={h.stopRecording} variant="destructive" className="w-full h-12 font-medium rounded-lg shadow-lg">
-                      <MicOff className="h-5 w-5 mr-2" />
-                      Stop & Analyze
-                    </Button>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-red-600 dark:text-red-400">Listening... Speak now!</span>
-                      </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                        <div className="bg-gradient-to-r from-red-500 to-orange-500 h-3 rounded-full transition-all duration-200 ease-out" 
-                             style={{ width: `${Math.min(s.volume * 200, 100)}%` }}></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              {s.pronunciationScore !== null && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                  <div className="text-center space-y-3">
-                    <div className="flex items-center justify-center gap-3">
-                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Your Score:</span>
-                      <div className={`text-3xl font-bold ${s.pronunciationScore >= 80 ? 'text-green-600' : s.pronunciationScore >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
-                        {s.pronunciationScore}%
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-center">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${s.pronunciationScore >= 80 ? 'bg-green-100 dark:bg-green-900' : s.pronunciationScore >= 60 ? 'bg-yellow-100 dark:bg-yellow-900' : 'bg-red-100 dark:bg-red-900'}`}>
-                        {s.pronunciationScore >= 80 ? (
-                          <CheckCircle className="h-8 w-8 text-green-600" />
-                        ) : s.pronunciationScore >= 60 ? (
-                          <AlertCircle className="h-8 w-8 text-yellow-500" />
-                        ) : (
-                          <X className="h-8 w-8 text-red-500" />
-                        )}
-                      </div>
-                    </div>
-                    
-                    {s.pronunciationFeedback && (
-                      <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                        <strong>Feedback:</strong> {s.pronunciationFeedback}
-                      </div>
-                    )}
-                    
-                    <Button onClick={h.startRecording} variant="outline" className="w-full">
-                      Try Again
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <PronunciationPractice 
+              term={s.localTerm.term} 
+              onScore={h.onPronunciationScore}
+            />
           )}
         </div>
         <Input placeholder="IPA" value={s.localTerm?.ipa || ''} onChange={(e) => h.inputChange('ipa', e.target.value)} className="w-full h-12 text-base font-mono" />
