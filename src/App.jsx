@@ -10,7 +10,7 @@ import { Plus, Search, ArrowLeft, Tag, X, ChevronDown, Volume2, Package, Upload,
 import { glossaryService } from '@/lib/glossaryService';
 
 const debounce = (func, wait) => { let timeout; return (...args) => { clearTimeout(timeout); timeout = setTimeout(() => func(...args), wait); }; };
-const APP_VERSION = "Version 9";
+const APP_VERSION = "Version 9 (Commit: 30c529c)";
 
 export default function GlossaryApp() {
   const [s, setS] = useState({ terms: [], search: '', selected: null, view: 'list', tags: [], selectedTag: 'all', loading: true, error: null, localTerm: null, newTag: '', importJson: '', importStatus: '', tagDropdownOpen: false, isGeneratingAudio: false });
